@@ -1,84 +1,74 @@
-import { useState, useEffect } from 'react';
+import { useCurrentAccount, useDisconnectWallet, ConnectButton } from '@mysten/dapp-kit';
 import { Button } from '@/components/ui/button';
-import { Wallet, ChevronDown } from 'lucide-react';
-import { walletService } from '@/services/wallet';
+import { Wallet, LogOut, ChevronDown, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { useState, useEffect } from 'react';
+import { logWalletDebugInfo, getAllDetectedWallets } from '@/services/slushHelper';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Alert,
+  AlertDescription,
+} from '@/components/ui/alert';
 
+/**
+ * WalletConnectButton component using @mysten/dapp-kit
+ * Enhanced with Slush Wallet detection debugging
+ */
 export const WalletConnectButton = () => {
-  const [walletState, setWalletState] = useState(walletService.getState());
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [availableWallets, setAvailableWallets] = useState<string[]>([]);
+  const account = useCurrentAccount();
+  const { mutate: disconnect } = useDisconnectWallet();
+  const [walletsDetected, setWalletsDetected] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
-    // Get available wallets (with a small delay to ensure wallet extensions are loaded)
+    // Check for wallets on component mount
     const checkWallets = () => {
-      const wallets = walletService.getAvailableWallets();
-      console.log('[WalletConnectButton] Available wallets:', wallets);
-      setAvailableWallets(wallets);
+      console.log('[WalletConnectButton] Checking for wallets...');
+      const { detected } = getAllDetectedWallets();
+      setWalletsDetected(detected);
+      
+      if (detected.length === 0) {
+        console.warn('[WalletConnectButton] ⚠️ No wallets detected!');
+        logWalletDebugInfo();
+      } else {
+        console.log('[WalletConnectButton] ✓ Wallets found:', detected);
+      }
     };
-    
+
     // Check immediately
     checkWallets();
     
-    // Also check after a short delay (wallet extensions might load asynchronously)
-    const timeout = setTimeout(checkWallets, 500);
-    
-    // Set initial state
-    setWalletState(walletService.getState());
-
-    // Listen for wallet state changes
-    const unsubscribe = walletService.onStateChange((state) => {
-      console.log('[WalletConnectButton] Wallet state changed:', state);
-      setWalletState(state);
-    });
+    // Check again after delays (wallet extensions may inject after page load)
+    const timer1 = setTimeout(checkWallets, 500);
+    const timer2 = setTimeout(checkWallets, 1500);
+    const timer3 = setTimeout(checkWallets, 3000);
 
     return () => {
-      clearTimeout(timeout);
-      if (unsubscribe) unsubscribe();
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
     };
   }, []);
 
-  const handleConnect = async (walletName?: string) => {
-    console.log('[WalletConnectButton] handleConnect called', walletName);
-    setIsConnecting(true);
-    try {
-      console.log('[WalletConnectButton] Calling walletService.connect...');
-      const address = await walletService.connect(walletName);
-      console.log('[WalletConnectButton] Connection successful, address:', address);
-      const walletName_ = walletService.getWalletName();
-      setWalletState({ connected: true, address, walletName: walletName_ || undefined });
-      toast({
-        title: "Wallet Connected",
-        description: `Connected to ${walletName_ || 'wallet'} (${walletService.formatAddress(address)})`,
-      });
-    } catch (error: any) {
-      console.error('[WalletConnectButton] Connection error:', error);
-      const errorMessage = error?.message || 'Could not connect to wallet';
-      toast({
-        title: "Connection Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsConnecting(false);
-    }
+  const formatAddress = (addr: string) => {
+    if (!addr || addr.length <= 10) return addr;
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
-  const handleDisconnect = async () => {
-    await walletService.disconnect();
-    setWalletState({ connected: false, address: null, walletName: undefined });
+  const handleDisconnect = () => {
+    disconnect();
     toast({
       title: "Wallet Disconnected",
     });
   };
 
-  if (walletState.connected && walletState.address) {
+  // If connected, show connected address with disconnect option
+  if (account?.address) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -88,14 +78,17 @@ export const WalletConnectButton = () => {
           >
             <Wallet className="h-4 w-4" />
             <span className="font-medium">
-              {walletState.walletName ? `${walletState.walletName}: ` : ''}
-              {walletService.formatAddress(walletState.address)}
+              {formatAddress(account.address)}
             </span>
             <ChevronDown className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="glass-effect border-primary/20">
-          <DropdownMenuItem onClick={handleDisconnect} className="cursor-pointer">
+          <DropdownMenuItem 
+            onClick={handleDisconnect} 
+            className="cursor-pointer gap-2 text-red-500 hover:text-red-600"
+          >
+            <LogOut className="h-4 w-4" />
             Disconnect
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -103,60 +96,47 @@ export const WalletConnectButton = () => {
     );
   }
 
-  // If multiple wallets available, show dropdown
-  if (availableWallets.length > 1) {
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button 
-            disabled={isConnecting}
-            className="group relative gap-2 bg-gradient-primary hover:shadow-glow transition-all duration-300 hover:scale-105 font-medium overflow-hidden"
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              <Wallet className="h-4 w-4 transition-transform group-hover:rotate-12" />
-              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-              <ChevronDown className="h-4 w-4" />
-            </span>
-            <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="glass-effect border-primary/20">
-          {availableWallets.map((walletName) => (
-            <DropdownMenuItem
-              key={walletName}
-              onClick={() => handleConnect(walletName)}
-              className="cursor-pointer"
-              disabled={isConnecting}
-            >
-              {walletName}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  }
-
-  // Single wallet or no wallet detected
+  // Not connected - show warning if no wallets detected
   return (
-    <Button 
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('[WalletConnectButton] Button clicked, availableWallets:', availableWallets);
-        handleConnect();
-      }}
-      disabled={isConnecting}
-      className="group relative gap-2 bg-gradient-primary hover:shadow-glow transition-all duration-300 hover:scale-105 font-medium overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      <span className="relative z-10 flex items-center gap-2">
-        <Wallet className="h-4 w-4 transition-transform group-hover:rotate-12" />
-        {isConnecting 
-          ? 'Connecting...' 
-          : availableWallets.length === 0 
-            ? 'No Wallet Found' 
-            : 'Connect Wallet'}
-      </span>
-      <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-    </Button>
+    <div className="flex flex-col items-end gap-2">
+      {walletsDetected.length === 0 && (
+        <Alert className="bg-yellow-50 border-yellow-200 mb-2 max-w-xs">
+          <AlertCircle className="h-4 w-4 text-yellow-600" />
+          <AlertDescription className="text-yellow-800 text-xs">
+            No wallet detected. Install Slush, Sui Wallet, or Nautilus.
+            <button 
+              onClick={() => setShowDebug(!showDebug)}
+              className="block mt-1 text-yellow-700 underline hover:text-yellow-900 text-xs"
+            >
+              {showDebug ? 'Hide' : 'Show'} debug info
+            </button>
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {showDebug && (
+        <div className="text-xs bg-gray-100 p-2 rounded max-w-xs mb-2 max-h-40 overflow-auto border border-gray-300">
+          <p className="font-bold mb-1">Detected Wallets:</p>
+          <p>{walletsDetected.length > 0 ? walletsDetected.join(', ') : 'None'}</p>
+          <button 
+            onClick={() => {
+              logWalletDebugInfo();
+              console.log('Debug info logged to console - open DevTools (F12) to see');
+              toast({
+                title: "Debug Info Logged",
+                description: "Check browser console (F12) for details",
+              });
+            }}
+            className="mt-2 text-blue-600 hover:text-blue-800 underline"
+          >
+            Log to Console
+          </button>
+        </div>
+      )}
+
+      <div className="[&>button]:bg-gradient-primary [&>button]:hover:shadow-glow [&>button]:transition-all [&>button]:duration-300 [&>button]:hover:scale-105 [&>button]:font-medium [&>button]:px-4 [&>button]:py-2 [&>button]:rounded-md [&>button]:gap-2 [&>button]:flex [&>button]:items-center">
+        <ConnectButton />
+      </div>
+    </div>
   );
 };

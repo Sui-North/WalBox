@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { WalletConnectButton } from '@/components/WalletConnectButton';
 import { FileUploadArea } from '@/components/FileUploadArea';
 import { FileListTable } from '@/components/FileListTable';
 import { filesService, FileMetadata } from '@/services/files';
-import { walletService } from '@/services/wallet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,36 +12,18 @@ import { Cloud, Upload, FolderOpen, ArrowLeft, Wallet } from 'lucide-react';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const account = useCurrentAccount();
   const [files, setFiles] = useState<FileMetadata[]>([]);
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
 
   useEffect(() => {
-    const { connected, address } = walletService.getState();
-    setWalletConnected(connected);
-    setWalletAddress(address);
-    
-    // Load files if wallet is connected
-    if (connected && address) {
-      loadFiles(address);
+    // Load files when wallet is connected
+    if (account?.address) {
+      loadFiles(account.address);
+    } else {
+      setFiles([]);
     }
-
-    // Listen for wallet state changes
-    const unsubscribe = walletService.onStateChange((state) => {
-      setWalletConnected(state.connected);
-      setWalletAddress(state.address);
-      if (state.connected && state.address) {
-        loadFiles(state.address);
-      } else {
-        setFiles([]);
-      }
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
+  }, [account?.address]);
 
   const loadFiles = async (address: string) => {
     setIsLoadingFiles(true);
@@ -57,8 +39,8 @@ const Dashboard = () => {
   };
 
   const refreshFiles = async () => {
-    if (walletAddress) {
-      await loadFiles(walletAddress);
+    if (account?.address) {
+      await loadFiles(account.address);
     }
   };
 
@@ -98,7 +80,7 @@ const Dashboard = () => {
             </p>
           </div>
 
-          {!walletConnected && (
+          {!account?.address && (
             <Card className="glass-effect p-8 border-primary/20 shadow-elevated animate-scale-in">
               <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                 <div>

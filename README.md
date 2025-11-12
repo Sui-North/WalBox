@@ -1,10 +1,10 @@
 # WalrusBox
 
-A modern, secure, and decentralized file storage platform built on blockchain technology. WalrusBox enables users to upload, manage, and share encrypted files with seamless wallet integration using the Nautilus blockchain wallet.
+A modern, secure, and decentralized file storage platform built on blockchain technology. WalrusBox enables users to upload, manage, and share encrypted files with seamless wallet integration using the official Sui dApp Kit.
 
 ## Overview
 
-WalrusBox is a **Web3-enabled file management system** that combines the security of encryption with the transparency and accessibility of blockchain technology. Users can connect their Nautilus wallet to securely store and manage their files in a decentralized environment.
+WalrusBox is a **Web3-enabled file management system** that combines the security of encryption with the transparency and accessibility of blockchain technology. Users can connect their Sui wallet (Sui Wallet, Nautilus, Suiet, etc.) to securely store and manage their files in a decentralized environment.
 
 ### Key Features
 
@@ -26,6 +26,8 @@ WalrusBox is a **Web3-enabled file management system** that combines the securit
 - **shadcn/ui** - High-quality, accessible component library
 - **React Router v6** - Client-side routing
 - **React Query (TanStack Query)** - Server state management
+- **@mysten/dapp-kit** - Official Sui wallet integration
+- **@mysten/sui** - Sui TypeScript SDK
 - **Lucide React** - Icon library
 - **Sonner & React Toasts** - Notification system
 
@@ -77,6 +79,31 @@ npm run build
 
 The optimized production build will be generated in the `dist/` directory.
 
+### Quick Setup Guide
+
+For detailed wallet connection setup, see **[WALLET_SETUP.md](./WALLET_SETUP.md)**
+
+1. **Install Sui Wallet Extension** - Choose one:
+   - [Sui Wallet](https://chrome.google.com/webstore)
+   - [Nautilus](https://nautilus.tech/)
+   - [Suiet](https://suiet.app/)
+
+2. **Configure Environment Variables**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+3. **Start Development Server**:
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+4. **Connect Wallet** - Click the wallet button in the app and approve connection
+
+5. **Get Test SUI** - Visit [Sui Testnet Faucet](https://testnet-faucet.sui.io/)
+
 ### Preview Production Build
 
 ```bash
@@ -93,7 +120,7 @@ src/
 │   ├── FileListTable.tsx        # Displays user's files
 │   ├── FileUploadArea.tsx       # File upload interface
 │   ├── ShareModal.tsx           # Share file dialog
-│   ├── WalletConnectButton.tsx  # Wallet connection UI
+│   ├── WalletConnectButton.tsx  # Wallet connection UI (enhanced with dApp Kit)
 │   └── ui/                      # shadcn/ui component library
 ├── pages/              # Page components (routing)
 │   ├── Home.tsx        # Landing page
@@ -104,11 +131,13 @@ src/
 │   ├── encryption.ts   # File encryption/decryption
 │   ├── files.ts        # File management service
 │   ├── storage.ts      # Storage operations
-│   └── wallet.ts       # Wallet integration
+│   └── wallet.ts       # Wallet integration (legacy service)
 ├── hooks/              # Custom React hooks
+│   ├── useWallet.ts    # Modern wallet hook using dApp Kit
+│   └── use-toast.ts    # Toast notifications
 ├── lib/                # Utility functions
 ├── App.tsx             # Root component
-└── main.tsx            # Application entry point
+└── main.tsx            # Application entry point with providers
 ```
 
 ## Usage

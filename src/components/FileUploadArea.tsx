@@ -1,16 +1,18 @@
 import { useState, useRef } from 'react';
 import { Upload, File, X } from 'lucide-react';
+import { useCurrentAccount, useSignAndExecuteTransactionBlock } from '@mysten/dapp-kit';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { encryptionService } from '@/services/encryption';
 import { storageService } from '@/services/storage';
 import { filesService } from '@/services/files';
-import { walletService } from '@/services/wallet';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 
 export const FileUploadArea = () => {
+  const account = useCurrentAccount();
+  const { mutate: signAndExecuteTransactionBlock } = useSignAndExecuteTransactionBlock();
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -48,11 +50,10 @@ export const FileUploadArea = () => {
     if (!selectedFile) return;
 
     // Check wallet connection
-    const { connected, address } = walletService.getState();
-    if (!connected || !address) {
+    if (!account?.address) {
       toast({
         title: "Wallet Not Connected",
-        description: "Please connect your Nautilus wallet to upload files",
+        description: "Please connect your Sui wallet to upload files",
         variant: "destructive",
       });
       return;
@@ -76,10 +77,28 @@ export const FileUploadArea = () => {
       // Step 3: Generate file ID and create FileObject on Sui blockchain
       const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Get transaction signer function from wallet service
-      const signer = walletService.getSigner();
+      // Create a signer function that uses dApp Kit's signAndExecuteTransactionBlock
+      const signerFunction = (tx: any, options?: any): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          signAndExecuteTransactionBlock(
+            {
+              transactionBlock: tx,
+              account: account,
+              options: options || {
+                showEffects: true,
+                showEvents: true,
+              },
+            } as any,
+            {
+              onSuccess: (result: any) => resolve(result.digest || result.transactionDigest || ''),
+              onError: reject,
+            }
+          );
+        });
+      };
 
-      await filesService.createFile(signer, fileId, walrusHash);
+      // Create file on-chain
+      await filesService.createFile(signerFunction, fileId, walrusHash);
       setUploadProgress(90);
 
       // Step 4: Store encryption key metadata (client-side only)
