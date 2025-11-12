@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { WalletConnectButton } from '@/components/WalletConnectButton';
 import { FileUploadArea } from '@/components/FileUploadArea';
 import { FileListTable } from '@/components/FileListTable';
-import { filesService } from '@/services/files';
+import { filesService, FileMetadata } from '@/services/files';
 import { walletService } from '@/services/wallet';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,16 +12,54 @@ import { Cloud, Upload, FolderOpen, ArrowLeft, Wallet } from 'lucide-react';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [files, setFiles] = useState(filesService.getAllFiles());
+  const [files, setFiles] = useState<FileMetadata[]>([]);
   const [walletConnected, setWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
 
   useEffect(() => {
-    const { connected } = walletService.getState();
+    const { connected, address } = walletService.getState();
     setWalletConnected(connected);
+    setWalletAddress(address);
+    
+    // Load files if wallet is connected
+    if (connected && address) {
+      loadFiles(address);
+    }
+
+    // Listen for wallet state changes
+    const unsubscribe = walletService.onStateChange((state) => {
+      setWalletConnected(state.connected);
+      setWalletAddress(state.address);
+      if (state.connected && state.address) {
+        loadFiles(state.address);
+      } else {
+        setFiles([]);
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
-  const refreshFiles = () => {
-    setFiles(filesService.getAllFiles());
+  const loadFiles = async (address: string) => {
+    setIsLoadingFiles(true);
+    try {
+      const fileList = await filesService.getAllFiles(address);
+      setFiles(fileList);
+    } catch (error) {
+      console.error('Error loading files:', error);
+      setFiles([]);
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  const refreshFiles = async () => {
+    if (walletAddress) {
+      await loadFiles(walletAddress);
+    }
   };
 
   return (

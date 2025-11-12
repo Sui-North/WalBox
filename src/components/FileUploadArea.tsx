@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { encryptionService } from '@/services/encryption';
 import { storageService } from '@/services/storage';
 import { filesService } from '@/services/files';
+import { walletService } from '@/services/wallet';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -46,37 +47,57 @@ export const FileUploadArea = () => {
   const handleUpload = async () => {
     if (!selectedFile) return;
 
+    // Check wallet connection
+    const { connected, address } = walletService.getState();
+    if (!connected || !address) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your Nautilus wallet to upload files",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(10);
 
     try {
-      // Create file metadata
-      const metadata = filesService.addFile({
-        name: selectedFile.name,
-        size: selectedFile.size,
-        type: selectedFile.type,
-        visibility: 'private',
-        allowedWallets: [],
-        encryptionStatus: 'pending',
-      });
-
+      // Step 1: Encrypt file client-side using Seal
+      const encryptedBlob = await encryptionService.encrypt(selectedFile);
       setUploadProgress(30);
 
-      // Simulate encryption
-      const encryptedBlob = await encryptionService.encrypt(selectedFile);
-      setUploadProgress(70);
+      // Step 2: Upload encrypted blob to Walrus
+      const walrusHash = await storageService.uploadToWalrus(
+        encryptedBlob,
+        selectedFile.name
+      );
+      setUploadProgress(60);
 
-      // Store in IndexedDB
-      await storageService.storeBlob(metadata.id, encryptedBlob);
+      // Step 3: Generate file ID and create FileObject on Sui blockchain
+      const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Get transaction signer function from wallet service
+      const signer = walletService.getSigner();
+
+      await filesService.createFile(signer, fileId, walrusHash);
       setUploadProgress(90);
 
-      // Update encryption status
-      filesService.updateFile(metadata.id, { encryptionStatus: 'encrypted' });
+      // Step 4: Store encryption key metadata (client-side only)
+      const keyId = encryptionService.generateKeyId();
+      encryptionService.storeKeyMetadata(keyId, {
+        fileName: selectedFile.name,
+        fileType: selectedFile.type,
+        fileSize: selectedFile.size,
+      });
+      
+      // Store keyId mapping (in production, use a more secure storage mechanism)
+      localStorage.setItem(`key_${fileId}`, keyId);
+
       setUploadProgress(100);
 
       toast({
         title: "File Uploaded Successfully",
-        description: `${selectedFile.name} has been encrypted and stored.`,
+        description: `${selectedFile.name} has been encrypted and stored on-chain.`,
       });
 
       setTimeout(() => {
@@ -84,9 +105,10 @@ export const FileUploadArea = () => {
       }, 500);
 
     } catch (error) {
+      console.error('Upload error:', error);
       toast({
         title: "Upload Failed",
-        description: "Could not upload file",
+        description: error instanceof Error ? error.message : "Could not upload file",
         variant: "destructive",
       });
     } finally {
@@ -170,9 +192,10 @@ export const FileUploadArea = () => {
               <Progress value={uploadProgress} className="h-2" />
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-primary">
-                  {uploadProgress < 30 && '🔄 Preparing file...'}
-                  {uploadProgress >= 30 && uploadProgress < 70 && '🔐 Encrypting with 256-bit AES...'}
-                  {uploadProgress >= 70 && uploadProgress < 100 && '☁️ Storing securely...'}
+                  {uploadProgress < 30 && '🔐 Encrypting with Seal...'}
+                  {uploadProgress >= 30 && uploadProgress < 60 && '☁️ Uploading to Walrus...'}
+                  {uploadProgress >= 60 && uploadProgress < 90 && '⛓️ Creating on-chain record...'}
+                  {uploadProgress >= 90 && uploadProgress < 100 && '💾 Finalizing...'}
                   {uploadProgress === 100 && '✅ Complete!'}
                 </p>
                 <span className="text-sm font-semibold text-primary">{uploadProgress}%</span>
