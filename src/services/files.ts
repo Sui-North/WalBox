@@ -2,6 +2,7 @@
 
 import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
+import { bcs } from '@mysten/sui/bcs';
 
 // Sui RPC client configuration
 const SUI_NETWORK = import.meta.env.VITE_SUI_NETWORK || 'testnet';
@@ -170,17 +171,21 @@ export const filesService = {
     try {
       const tx = new Transaction();
 
-      // Convert fileId and hash to vectors
+      // Convert fileId and hash to proper BCS format
       const fileIdBytes = new TextEncoder().encode(fileId);
-      const hashVector = Array.from(walrusObjectHash);
+      const hashBytes = new Uint8Array(walrusObjectHash);
 
-      // Call create_file function
+      // Serialize as vector<u8> using BCS
+      const fileIdBcs = bcs.vector(bcs.u8()).serialize(Array.from(fileIdBytes));
+      const hashBcs = bcs.vector(bcs.u8()).serialize(Array.from(hashBytes));
+
+      // Call create_file function with properly serialized BCS data
       tx.moveCall({
         target: `${PACKAGE_ID}::walrusbox::create_file`,
         arguments: [
           tx.object(REGISTRY_ID),
-          tx.pure(fileIdBytes),
-          tx.pure(hashVector),
+          tx.pure(fileIdBcs),   // Serialized vector<u8>
+          tx.pure(hashBcs),     // Serialized vector<u8>
         ],
       });
 
@@ -216,7 +221,7 @@ export const filesService = {
         target: `${PACKAGE_ID}::walrusbox::set_visibility`,
         arguments: [
           tx.object(fileObjectId),
-          tx.pure(visibilityValue),
+          tx.pure.u8(visibilityValue),  // Explicitly specify u8 type
         ],
       });
 
@@ -247,7 +252,7 @@ export const filesService = {
         target: `${PACKAGE_ID}::walrusbox::add_allowed_address`,
         arguments: [
           tx.object(fileObjectId),
-          tx.pure(allowedAddress),
+          tx.pure.address(allowedAddress),  // Explicitly specify address type
         ],
       });
 
@@ -278,7 +283,7 @@ export const filesService = {
         target: `${PACKAGE_ID}::walrusbox::remove_allowed_address`,
         arguments: [
           tx.object(fileObjectId),
-          tx.pure(allowedAddress),
+          tx.pure.address(allowedAddress),  // Explicitly specify address type
         ],
       });
 

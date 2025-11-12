@@ -4,6 +4,7 @@ import { useCurrentAccount, useSignAndExecuteTransactionBlock } from '@mysten/da
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { StorageModeBanner } from '@/components/StorageModeBanner';
 import { encryptionService } from '@/services/encryption';
 import { storageService } from '@/services/storage';
 import { filesService } from '@/services/files';
@@ -145,6 +146,7 @@ export const FileUploadArea = () => {
 
   return (
     <div className="space-y-6">
+      <StorageModeBanner />
       <Card
         className={`glass-effect border-2 border-dashed transition-all duration-300 ${
           isDragging 

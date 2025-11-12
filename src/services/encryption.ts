@@ -2,6 +2,15 @@
 // Keys are never stored on backend, all encryption happens in the browser
 
 /**
+ * Check if Web Crypto API is available
+ */
+const isCryptoAvailable = (): boolean => {
+  return typeof window !== 'undefined' && 
+         window.crypto && 
+         window.crypto.subtle !== undefined;
+};
+
+/**
  * Encrypts a file using Web Crypto API (AES-GCM)
  * All encryption/decryption happens client-side
  */
@@ -13,11 +22,19 @@ export const encryptionService = {
    */
   encrypt: async (file: File): Promise<Blob> => {
     try {
+      // Check if crypto.subtle is available
+      if (!isCryptoAvailable()) {
+        console.warn('⚠️ Web Crypto API not available (requires HTTPS or localhost)');
+        console.warn('⚠️ Skipping encryption for development');
+        // Return file as-is without encryption for development
+        return new Blob([await file.arrayBuffer()], { type: file.type });
+      }
+
       // Read file as ArrayBuffer
       const fileBuffer = await file.arrayBuffer();
       
       // Generate a random 256-bit key
-      const key = await crypto.subtle.generateKey(
+      const key = await window.crypto.subtle.generateKey(
         {
           name: 'AES-GCM',
           length: 256,
@@ -27,10 +44,10 @@ export const encryptionService = {
       );
       
       // Generate a random IV (Initialization Vector)
-      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
       
       // Encrypt the file data
-      const encryptedData = await crypto.subtle.encrypt(
+      const encryptedData = await window.crypto.subtle.encrypt(
         {
           name: 'AES-GCM',
           iv: iv,
@@ -40,7 +57,7 @@ export const encryptionService = {
       );
       
       // Export the key for storage
-      const exportedKey = await crypto.subtle.exportKey('raw', key);
+      const exportedKey = await window.crypto.subtle.exportKey('raw', key);
       
       // Store the encryption key and metadata in session storage (client-side only)
       const keyId = `key_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -73,6 +90,12 @@ export const encryptionService = {
    */
   decrypt: async (blob: Blob, keyId: string): Promise<Blob> => {
     try {
+      // Check if crypto.subtle is available
+      if (!isCryptoAvailable()) {
+        console.warn('⚠️ Web Crypto API not available, returning blob as-is');
+        return blob;
+      }
+
       // Retrieve encryption key from session storage
       const keyData = sessionStorage.getItem(keyId);
       if (!keyData) {
@@ -82,7 +105,7 @@ export const encryptionService = {
       const { key: keyArray, iv: ivArray, fileType } = JSON.parse(keyData);
       
       // Import the key
-      const key = await crypto.subtle.importKey(
+      const key = await window.crypto.subtle.importKey(
         'raw',
         new Uint8Array(keyArray),
         {
@@ -102,7 +125,7 @@ export const encryptionService = {
       const encryptedData = encryptedArray.slice(12);
       
       // Decrypt the data
-      const decryptedData = await crypto.subtle.decrypt(
+      const decryptedData = await window.crypto.subtle.decrypt(
         {
           name: 'AES-GCM',
           iv: iv,

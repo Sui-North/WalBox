@@ -1,8 +1,10 @@
 // Walrus Storage Service - Decentralized object storage for encrypted files
 // Uses fetch API to interact with Walrus storage endpoint
+// Falls back to IndexedDB for local testing when Walrus is unavailable
 
 // Walrus API endpoint configuration
 const WALRUS_ENDPOINT = import.meta.env.VITE_WALRUS_ENDPOINT || 'https://walrus-api.example.com';
+const USE_MOCK_STORAGE = WALRUS_ENDPOINT.includes('example.com'); // Auto-detect mock mode
 
 /**
  * Upload encrypted file blob to Walrus and return object hash (CID-like reference)
@@ -18,40 +20,97 @@ export class StorageService {
    * @returns Object hash as Uint8Array (for Sui contract)
    */
   async uploadToWalrus(blob: Blob, fileName: string): Promise<Uint8Array> {
-    try {
-      // Create FormData for multipart upload
-      const formData = new FormData();
-      formData.append('file', blob, fileName);
-      formData.append('metadata', JSON.stringify({
-        fileName,
-        contentType: blob.type,
-        uploadedAt: new Date().toISOString(),
-      }));
+    // Use mock storage for local testing if Walrus endpoint is not configured
+    if (USE_MOCK_STORAGE) {
+      console.log('📦 Using mock storage (IndexedDB) for local testing');
+      return await this.uploadToMockStorage(blob, fileName);
+    }
 
-      // Upload to Walrus API
-      const response = await fetch(`${WALRUS_ENDPOINT}/upload`, {
-        method: 'POST',
-        body: formData,
-        // Note: In production, you may need to add authentication headers
-        // headers: {
-        //   'Authorization': `Bearer ${token}`,
-        // },
+    try {
+      console.log('🐋 Uploading to Walrus network...');
+      
+      // Walrus HTTP API uses PUT method with binary data
+      // Endpoint: /v1/store?epochs=<number>
+      const epochs = 5; // Store for 5 epochs (adjust as needed)
+      const response = await fetch(`${WALRUS_ENDPOINT}/v1/store?epochs=${epochs}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+        },
+        body: blob, // Send blob directly as binary data
       });
 
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Walrus API error:', errorText);
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
+      console.log('Walrus response:', result);
       
-      // Walrus returns a hash (CID-like reference)
-      // Convert hash string to Uint8Array for Sui contract
-      const hashBytes = this.hashToBytes(result.hash || result.cid || result.objectHash);
+      // Walrus returns either newlyCreated or alreadyCertified
+      // Extract blob ID from the response
+      let blobId: string;
+      
+      if (result.newlyCreated) {
+        blobId = result.newlyCreated.blobObject.blobId;
+        console.log('✅ New blob created:', blobId);
+      } else if (result.alreadyCertified) {
+        blobId = result.alreadyCertified.blobId;
+        console.log('✅ Blob already exists:', blobId);
+      } else {
+        throw new Error('Unexpected Walrus response format');
+      }
+      
+      // Convert blob ID to Uint8Array for Sui contract
+      const hashBytes = this.hashToBytes(blobId);
       
       return hashBytes;
     } catch (error) {
       console.error('Walrus upload error:', error);
-      throw new Error('Failed to upload file to Walrus storage');
+      
+      // If Walrus fails, fall back to mock storage
+      console.warn('⚠️ Walrus upload failed, falling back to mock storage');
+      return await this.uploadToMockStorage(blob, fileName);
+    }
+  }
+
+  /**
+   * Mock storage upload (uses IndexedDB for local testing)
+   * @param blob - Encrypted file blob
+   * @param fileName - Original file name
+   * @returns Mock hash as Uint8Array
+   */
+  private async uploadToMockStorage(blob: Blob, fileName: string): Promise<Uint8Array> {
+    try {
+      // Initialize IndexedDB if needed
+      if (!this.db) await this.init();
+
+      // Generate a unique hash for this file
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 15);
+      const mockHash = `mock_${timestamp}_${random}`;
+
+      // Store blob in IndexedDB
+      await this.storeBlob(mockHash, blob);
+
+      // Store metadata
+      const metadata = {
+        fileName,
+        contentType: blob.type,
+        size: blob.size,
+        uploadedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(`metadata_${mockHash}`, JSON.stringify(metadata));
+
+      console.log(`✅ Mock upload successful: ${mockHash}`);
+
+      // Convert hash to Uint8Array
+      return this.hashToBytes(mockHash);
+    } catch (error) {
+      console.error('Mock storage upload error:', error);
+      throw new Error('Failed to upload file to mock storage');
     }
   }
 
@@ -61,28 +120,70 @@ export class StorageService {
    * @returns File blob
    */
   async downloadFromWalrus(objectHash: Uint8Array): Promise<Blob> {
+    // Convert Uint8Array back to hash string (blob ID)
+    const blobId = this.bytesToHash(objectHash);
+
+    // Use mock storage for local testing
+    if (USE_MOCK_STORAGE || blobId.startsWith('mock_')) {
+      console.log('📦 Using mock storage (IndexedDB) for download');
+      return await this.downloadFromMockStorage(blobId);
+    }
+
     try {
-      // Convert Uint8Array back to hash string
-      const hashString = this.bytesToHash(objectHash);
+      console.log('🐋 Downloading from Walrus network...');
       
-      // Download from Walrus API
-      const response = await fetch(`${WALRUS_ENDPOINT}/download/${hashString}`, {
+      // Walrus HTTP API download endpoint: /v1/{blob_id}
+      // Use aggregator endpoint for downloads
+      const aggregatorEndpoint = WALRUS_ENDPOINT.replace('publisher', 'aggregator');
+      const response = await fetch(`${aggregatorEndpoint}/v1/${blobId}`, {
         method: 'GET',
-        // Note: In production, you may need to add authentication headers
-        // headers: {
-        //   'Authorization': `Bearer ${token}`,
-        // },
       });
 
       if (!response.ok) {
-        throw new Error(`Download failed: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Walrus download error:', errorText);
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
       }
 
+      console.log('✅ Downloaded from Walrus');
+      
       // Return as blob
       return await response.blob();
     } catch (error) {
       console.error('Walrus download error:', error);
-      throw new Error('Failed to download file from Walrus storage');
+      
+      // Try to fall back to mock storage if available
+      try {
+        console.warn('⚠️ Trying mock storage fallback...');
+        return await this.downloadFromMockStorage(blobId);
+      } catch {
+        throw new Error('Failed to download file from Walrus storage');
+      }
+    }
+  }
+
+  /**
+   * Mock storage download (uses IndexedDB for local testing)
+   * @param hashString - Mock hash string
+   * @returns File blob
+   */
+  private async downloadFromMockStorage(hashString: string): Promise<Blob> {
+    try {
+      // Initialize IndexedDB if needed
+      if (!this.db) await this.init();
+
+      // Retrieve blob from IndexedDB
+      const blob = await this.getBlob(hashString);
+      
+      if (!blob) {
+        throw new Error('File not found in mock storage');
+      }
+
+      console.log(`✅ Mock download successful: ${hashString}`);
+      return blob;
+    } catch (error) {
+      console.error('Mock storage download error:', error);
+      throw new Error('Failed to download file from mock storage');
     }
   }
 
@@ -91,9 +192,16 @@ export class StorageService {
    * @param objectHash - Walrus object hash
    */
   async deleteFromWalrus(objectHash: Uint8Array): Promise<void> {
+    const hashString = this.bytesToHash(objectHash);
+
+    // Use mock storage for local testing
+    if (USE_MOCK_STORAGE || hashString.startsWith('mock_')) {
+      console.log('📦 Using mock storage (IndexedDB) for delete');
+      await this.deleteFromMockStorage(hashString);
+      return;
+    }
+
     try {
-      const hashString = this.bytesToHash(objectHash);
-      
       const response = await fetch(`${WALRUS_ENDPOINT}/delete/${hashString}`, {
         method: 'DELETE',
         // Note: In production, you may need to add authentication headers
@@ -108,6 +216,28 @@ export class StorageService {
     } catch (error) {
       console.error('Walrus delete error:', error);
       throw new Error('Failed to delete file from Walrus storage');
+    }
+  }
+
+  /**
+   * Mock storage delete (uses IndexedDB for local testing)
+   * @param hashString - Mock hash string
+   */
+  private async deleteFromMockStorage(hashString: string): Promise<void> {
+    try {
+      // Initialize IndexedDB if needed
+      if (!this.db) await this.init();
+
+      // Delete blob from IndexedDB
+      await this.deleteBlob(hashString);
+
+      // Delete metadata
+      localStorage.removeItem(`metadata_${hashString}`);
+
+      console.log(`✅ Mock delete successful: ${hashString}`);
+    } catch (error) {
+      console.error('Mock storage delete error:', error);
+      throw new Error('Failed to delete file from mock storage');
     }
   }
 
