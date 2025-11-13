@@ -74,8 +74,6 @@ export function getAllDetectedWallets() {
     .filter(([_, info]) => info.detected)
     .map(([key, info]) => info.type);
   
-  console.log('[SlushHelper] Detected wallets:', detected.length > 0 ? detected : 'None');
-  
   return { wallets, detected };
 }
 

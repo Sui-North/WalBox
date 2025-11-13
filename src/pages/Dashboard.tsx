@@ -1,20 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { WalletConnectButton } from '@/components/WalletConnectButton';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { SearchBar } from '@/components/SearchBar';
 import { FileUploadArea } from '@/components/FileUploadArea';
 import { FileListTable } from '@/components/FileListTable';
 import { filesService, FileMetadata } from '@/services/files';
+import { favoritesService } from '@/services/favorites';
+import { exportService } from '@/services/export';
+import { useFileFilter } from '@/hooks/useFileFilter';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Cloud, Upload, FolderOpen, ArrowLeft, Wallet } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Cloud, Upload, FolderOpen, ArrowLeft, Wallet, Download, Star, Clock } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const account = useCurrentAccount();
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [activeTab, setActiveTab] = useState('upload');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  // File filtering
+  const { filters, filteredFiles, setSearch, clearSearch, updateFilters } = useFileFilter(files);
+  
+  // Favorites
+  const favoriteIds = favoritesService.getFavorites();
+  const favoriteFiles = files.filter(f => favoriteIds.includes(f.id));
+  
+  // Recent files
+  const recentIds = favoritesService.getRecentFiles();
+  const recentFiles = files.filter(f => recentIds.includes(f.id)).slice(0, 5);
 
   useEffect(() => {
     // Load files when wallet is connected
@@ -44,6 +65,45 @@ const Dashboard = () => {
     }
   };
 
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    {
+      key: 'u',
+      ctrl: true,
+      callback: () => setActiveTab('upload'),
+      description: 'Open upload tab',
+    },
+    {
+      key: 'k',
+      ctrl: true,
+      callback: () => searchInputRef.current?.focus(),
+      description: 'Focus search',
+    },
+    {
+      key: 'r',
+      ctrl: true,
+      callback: refreshFiles,
+      description: 'Refresh files',
+    },
+  ]);
+
+  // Export files
+  const handleExport = () => {
+    try {
+      exportService.exportToCSV(filteredFiles);
+      toast({
+        title: 'Files Exported',
+        description: `Exported ${filteredFiles.length} files to CSV`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Export Failed',
+        description: 'Failed to export files',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Animated background */}
@@ -66,7 +126,10 @@ const Dashboard = () => {
               <span className="text-xl font-bold tracking-tight">WalrusBox</span>
             </div>
           </div>
-          <WalletConnectButton />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <WalletConnectButton />
+          </div>
         </div>
       </header>
 
@@ -97,30 +160,91 @@ const Dashboard = () => {
             </Card>
           )}
 
-          <Tabs defaultValue="upload" className="w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            <TabsList className="glass-effect grid w-full max-w-md grid-cols-2 p-1.5 h-auto">
-              <TabsTrigger 
-                value="upload" 
-                className="gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300 py-3"
-              >
-                <Upload className="h-4 w-4" />
-                <span className="font-medium">Upload</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="files" 
-                className="gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300 py-3"
-              >
-                <FolderOpen className="h-4 w-4" />
-                <span className="font-medium">My Files ({files.length})</span>
-              </TabsTrigger>
-            </TabsList>
+          {/* Recent Files Section */}
+          {account?.address && recentFiles.length > 0 && (
+            <Card className="glass-effect p-6 border-primary/20 animate-fade-in">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-primary" />
+                  Recent Files
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {recentFiles.map((file) => (
+                  <Card 
+                    key={file.id} 
+                    className="p-3 hover:bg-primary/5 transition-colors cursor-pointer"
+                    onClick={() => setActiveTab('files')}
+                  >
+                    <p className="text-sm truncate font-medium">{file.file_id}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {file.uploadedAt.toLocaleDateString()}
+                    </p>
+                  </Card>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            <div className="flex items-center justify-between mb-4">
+              <TabsList className="glass-effect grid w-full max-w-2xl grid-cols-3 p-1.5 h-auto">
+                <TabsTrigger 
+                  value="upload" 
+                  className="gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300 py-3"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span className="font-medium">Upload</span>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="files" 
+                  className="gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300 py-3"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  <span className="font-medium">All Files</span>
+                  <Badge variant="secondary" className="ml-1">{files.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="favorites" 
+                  className="gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300 py-3"
+                >
+                  <Star className="h-4 w-4" />
+                  <span className="font-medium">Favorites</span>
+                  <Badge variant="secondary" className="ml-1">{favoriteFiles.length}</Badge>
+                </TabsTrigger>
+              </TabsList>
+
+              {(activeTab === 'files' || activeTab === 'favorites') && (
+                <Button
+                  variant="outline"
+                  onClick={handleExport}
+                  className="gap-2 glass-effect border-primary/20"
+                  disabled={filteredFiles.length === 0}
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Export CSV</span>
+                </Button>
+              )}
+            </div>
 
             <TabsContent value="upload" className="mt-6">
               <FileUploadArea />
             </TabsContent>
 
-            <TabsContent value="files" className="mt-6">
-              <FileListTable files={files} onRefresh={refreshFiles} />
+            <TabsContent value="files" className="mt-6 space-y-4">
+              <SearchBar
+                value={filters.search}
+                onChange={setSearch}
+                onClear={clearSearch}
+                filters={filters}
+                onFilterChange={updateFilters}
+                placeholder="Search files..."
+              />
+              <FileListTable files={filteredFiles} onRefresh={refreshFiles} />
+            </TabsContent>
+
+            <TabsContent value="favorites" className="mt-6">
+              <FileListTable files={favoriteFiles} onRefresh={refreshFiles} />
             </TabsContent>
           </Tabs>
         </div>

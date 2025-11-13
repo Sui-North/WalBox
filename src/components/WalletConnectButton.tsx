@@ -27,31 +27,26 @@ export const WalletConnectButton = () => {
 
   useEffect(() => {
     // Check for wallets on component mount
-    const checkWallets = () => {
-      console.log('[WalletConnectButton] Checking for wallets...');
+    const checkWallets = (isInitial = false) => {
       const { detected } = getAllDetectedWallets();
       setWalletsDetected(detected);
       
-      if (detected.length === 0) {
-        console.warn('[WalletConnectButton] ⚠️ No wallets detected!');
-        logWalletDebugInfo();
-      } else {
+      // Only log once after final check
+      if (!isInitial && detected.length === 0) {
+        console.warn('[WalletConnectButton] No Sui wallet detected. Install Slush, Sui Wallet, or Nautilus extension.');
+      } else if (!isInitial && detected.length > 0) {
         console.log('[WalletConnectButton] ✓ Wallets found:', detected);
       }
     };
 
-    // Check immediately
-    checkWallets();
+    // Check immediately (silent)
+    checkWallets(true);
     
-    // Check again after delays (wallet extensions may inject after page load)
-    const timer1 = setTimeout(checkWallets, 500);
-    const timer2 = setTimeout(checkWallets, 1500);
-    const timer3 = setTimeout(checkWallets, 3000);
+    // Final check after wallet extensions have time to load
+    const timer = setTimeout(() => checkWallets(false), 2000);
 
     return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
+      clearTimeout(timer);
     };
   }, []);
 

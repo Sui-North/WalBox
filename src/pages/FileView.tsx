@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { filesService, FileMetadata } from '@/services/files';
+import { localFilesService, LocalFileMetadata } from '@/services/localFiles';
 import { storageService } from '@/services/storage';
 import { WalletConnectButton } from '@/components/WalletConnectButton';
+import { ShareModal } from '@/components/ShareModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,22 +18,24 @@ import {
   Video,
   Music,
   File as FileIcon,
-  Eye
+  Eye,
+  Share2
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const FileView = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [file, setFile] = useState<FileMetadata | null>(null);
+  const [file, setFile] = useState<LocalFileMetadata | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     const loadFile = async () => {
       if (!id) return;
 
-      const metadata = filesService.getFile(id);
+      const metadata = localFilesService.getFile(id);
       if (!metadata) {
         toast({
           title: "File Not Found",
@@ -197,7 +200,7 @@ const FileView = () => {
                 <div>
                   <h1 className="text-3xl font-bold mb-2">{file.name}</h1>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span className="font-medium">{filesService.formatFileSize(file.size)}</span>
+                    <span className="font-medium">{localFilesService.formatFileSize(file.size)}</span>
                     <span>•</span>
                     <span>{file.uploadedAt.toLocaleDateString()}</span>
                   </div>
@@ -216,13 +219,23 @@ const FileView = () => {
               </Badge>
             </div>
 
-            <Button 
-              onClick={handleDownload}
-              className="w-full bg-gradient-primary hover:shadow-glow transition-all duration-300 hover:scale-[1.02] font-semibold text-base py-6"
-            >
-              <Download className="mr-2 h-5 w-5" />
-              Download File
-            </Button>
+            <div className="flex gap-3">
+              <Button 
+                onClick={handleDownload}
+                className="flex-1 bg-gradient-primary hover:shadow-glow transition-all duration-300 hover:scale-[1.02] font-semibold text-base py-6"
+              >
+                <Download className="mr-2 h-5 w-5" />
+                Download File
+              </Button>
+              <Button 
+                onClick={() => setShowShareModal(true)}
+                variant="outline"
+                className="px-8 py-6 hover:bg-primary/10 hover:border-primary/50 transition-all duration-300"
+              >
+                <Share2 className="mr-2 h-5 w-5" />
+                Share
+              </Button>
+            </div>
           </Card>
 
           {/* Preview Card */}
@@ -254,6 +267,15 @@ const FileView = () => {
           )}
         </div>
       </main>
+
+      {/* Share Modal */}
+      {file && showShareModal && (
+        <ShareModal
+          file={file}
+          onClose={() => setShowShareModal(false)}
+          onUpdate={() => {}}
+        />
+      )}
     </div>
   );
 };

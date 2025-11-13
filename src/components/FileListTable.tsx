@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileMetadata, filesService } from '@/services/files';
+import { localFilesService, LocalFileMetadata } from '@/services/localFiles';
 import { storageService } from '@/services/storage';
 import {
   Table,
@@ -23,16 +24,16 @@ interface FileListTableProps {
 
 export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
   const navigate = useNavigate();
-  const [shareModalFile, setShareModalFile] = useState<FileMetadata | null>(null);
+  const [shareModalFile, setShareModalFile] = useState<LocalFileMetadata | null>(null);
 
   const handleDelete = async (file: FileMetadata) => {
     try {
       await storageService.deleteBlob(file.id);
-      filesService.deleteFile(file.id);
+      localFilesService.deleteFile(file.id);
       onRefresh();
       toast({
         title: "File Deleted",
-        description: `${file.name} has been removed.`,
+        description: "File has been removed.",
       });
     } catch (error) {
       toast({
@@ -40,6 +41,27 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
         description: "Could not delete file",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleShare = (file: FileMetadata) => {
+    // Get local metadata for sharing
+    const localFile = localFilesService.getFile(file.id);
+    if (localFile) {
+      setShareModalFile(localFile);
+    } else {
+      // Create local metadata if it doesn't exist
+      const newLocalFile: LocalFileMetadata = {
+        id: file.id,
+        name: file.file_id || 'Unknown',
+        size: 0,
+        type: 'application/octet-stream',
+        uploadedAt: file.uploadedAt,
+        visibility: file.visibility,
+        allowedWallets: file.allowedWallets,
+      };
+      localFilesService.saveFile(newLocalFile);
+      setShareModalFile(newLocalFile);
     }
   };
 
@@ -75,8 +97,12 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
                 className="hover:bg-primary/5 transition-colors duration-200 border-white/5 animate-fade-in"
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
-                <TableCell className="font-medium">{file.name}</TableCell>
-                <TableCell className="text-muted-foreground">{filesService.formatFileSize(file.size)}</TableCell>
+                <TableCell className="font-medium">{file.file_id || 'Unknown'}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {localFilesService.getFile(file.id)?.size 
+                    ? localFilesService.formatFileSize(localFilesService.getFile(file.id)!.size)
+                    : 'Unknown'}
+                </TableCell>
                 <TableCell className="text-muted-foreground">
                   {file.uploadedAt.toLocaleDateString()}
                 </TableCell>
@@ -106,7 +132,7 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => setShareModalFile(file)}
+                      onClick={() => handleShare(file)}
                       className="hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
                     >
                       <Share2 className="h-4 w-4" />

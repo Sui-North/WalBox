@@ -27,8 +27,26 @@ WalrusBox is a **Web3-enabled file management system** that combines the securit
 - 🌐 **Decentralized Storage** - Leverages Walrus (Sui's storage solution) with IndexedDB fallback
 - ⛓️ **Blockchain Metadata** - File ownership and access control stored immutably on Sui
 - 💼 **Multi-Wallet Support** - Compatible with Sui Wallet, Nautilus, Slush, Suiet, and more
+- 🔗 **Secure Sharing** - Wallet-restricted links with QR codes and expiration control
 - 🎨 **Modern UI/UX** - Beautiful, responsive interface with glassmorphism design
 - 🔄 **Auto-Fallback** - Seamless degradation to local storage when needed
+- 🚀 **Production Ready** - 15+ features, comprehensive testing, full documentation
+
+### Feature Comparison
+
+| Feature | WalrusBox | Traditional Cloud | Other Web3 |
+|---------|-----------|-------------------|------------|
+| End-to-End Encryption | ✅ AES-256-GCM | ❌ Server-side | ⚠️ Varies |
+| Decentralized Storage | ✅ Walrus | ❌ Centralized | ✅ IPFS/Arweave |
+| Blockchain Metadata | ✅ Sui | ❌ Database | ✅ Various |
+| Wallet-Based Access | ✅ Built-in | ❌ Email/Password | ⚠️ Limited |
+| Share Links | ✅ With restrictions | ✅ Basic | ⚠️ Limited |
+| QR Code Sharing | ✅ Yes | ❌ No | ❌ No |
+| File Preview | ✅ Yes | ✅ Yes | ⚠️ Limited |
+| Search & Filter | ✅ Yes | ✅ Yes | ⚠️ Limited |
+| Dark Theme | ✅ Yes | ⚠️ Varies | ⚠️ Varies |
+| No Vendor Lock-in | ✅ Yes | ❌ No | ✅ Yes |
+| Privacy | ✅ Full | ⚠️ Limited | ✅ Good |
 
 ---
 
@@ -67,19 +85,41 @@ WalrusBox is a **Web3-enabled file management system** that combines the securit
 
 ### Advanced Features
 
-- **Access Control**
+- **🔗 Secure File Sharing**
+  - Generate shareable links with QR codes
+  - Wallet-based access restrictions
+  - Custom expiration times (1-720 hours)
+  - Download limits and access tracking
+  - Revoke links anytime
+
+- **🔐 Access Control**
   - Public/private file visibility
+  - Wallet address restrictions
   - Granular permission management
   - Address-based access lists
   - Owner-only operations
 
-- **Storage Flexibility**
+- **📊 File Management**
+  - Search and filter files
+  - File preview (images, videos, audio)
+  - Favorites and recent files
+  - Export file lists
+  - Keyboard shortcuts
+
+- **🎨 User Experience**
+  - Dark/light theme toggle
+  - Responsive design (mobile, tablet, desktop)
+  - Glass-morphism UI
+  - Toast notifications
+  - Loading states and error handling
+
+- **💾 Storage Flexibility**
   - Walrus decentralized storage
   - IndexedDB local fallback
   - Automatic mode detection
   - Seamless switching
 
-- **Developer Experience**
+- **👨‍💻 Developer Experience**
   - Full TypeScript support
   - Comprehensive error handling
   - Detailed console logging
@@ -97,17 +137,57 @@ npm run dev
 # Access at: http://localhost:8080
 ```
 
+### Feature Showcase
+
+**🔐 Secure File Upload**
+```
+Drag & Drop → Encrypt (AES-256) → Upload to Walrus → 
+Store Metadata on Sui → Done!
+```
+
+**🔗 Smart Sharing**
+```
+Select File → Add Wallet Addresses → Set Expiration → 
+Generate Link → Share via QR or URL
+```
+
+**🎨 Modern Interface**
+```
+Glass-morphism Design → Dark/Light Theme → 
+Responsive Layout → Smooth Animations
+```
+
+**🔍 Advanced Search**
+```
+Search by Name → Filter by Type → Sort by Date → 
+View Favorites → Export Results
+```
+
 ### Screenshots
 
 **Dashboard**
 - Modern file management interface
 - Real-time upload progress
-- File list with actions
+- File list with search and filters
+- Quick actions (view, share, delete)
+
+**Share Modal**
+- Wallet address input with validation
+- Expiration and access limit controls
+- QR code generation
+- Active links management
+
+**Share Page**
+- Public file access page
+- Wallet connection prompt
+- File preview and details
+- Secure download
 
 **Wallet Connection**
 - One-click wallet integration
-- Multiple wallet support
+- Multiple wallet support (Sui, Nautilus, Slush, Suiet)
 - Auto-reconnect functionality
+- Clear connection status
 
 ---
 
@@ -237,7 +317,108 @@ Choose one of the supported wallets:
 - **View Files**: Click **"My Files"** tab
 - **Download**: Click on a file to download
 - **Delete**: Use the delete button
-- **Share**: Generate secure share links (coming soon)
+- **Share**: Generate secure share links with wallet restrictions
+
+### 6. Share Files Securely
+
+1. Click the **Share** button next to any file
+2. **Optional**: Add wallet addresses to restrict access
+   - Enter Sui wallet address (0x...)
+   - Click + or press Enter
+   - Add multiple addresses
+3. Set **expiration time** (default: 24 hours)
+4. Set **max downloads** (optional)
+5. Click **"Generate Share Link"**
+6. **Copy link** or show **QR code**
+7. Share with recipients
+
+### 7. Access Shared Files
+
+1. Open the share link
+2. If wallet-restricted, click **"Connect Wallet"**
+3. Approve connection
+4. Download the file if authorized
+
+---
+
+## 🔗 File Sharing Features
+
+### Secure Link Sharing
+
+WalrusBox provides a comprehensive file sharing system with advanced security features:
+
+#### Key Features
+
+- **🔐 Wallet-Based Access Control**
+  - Restrict files to specific Sui wallet addresses
+  - Add multiple authorized wallets
+  - Case-insensitive address matching
+  - Automatic wallet verification
+
+- **⏰ Expiration Control**
+  - Set custom expiration (1-720 hours)
+  - Default: 24 hours
+  - Automatic link cleanup
+  - Time-based access control
+
+- **📊 Access Tracking**
+  - View access count per link
+  - Set maximum download limits
+  - Track remaining accesses
+  - Monitor link usage
+
+- **📱 QR Code Generation**
+  - Generate QR codes for any link
+  - Easy mobile sharing
+  - High error correction
+  - Instant scanning
+
+- **🔒 Link Management**
+  - View all active links
+  - Revoke links instantly
+  - Multiple links per file
+  - Link statistics dashboard
+
+#### How It Works
+
+**Creating a Share Link:**
+
+1. Click Share button on any file
+2. (Optional) Add wallet addresses for restrictions
+3. Set expiration time and download limits
+4. Generate secure link with 256-bit token
+5. Copy link or show QR code
+
+**Accessing a Shared File:**
+
+1. Recipient opens the share link
+2. If wallet-restricted, connects wallet
+3. System verifies authorization
+4. Download file if authorized
+
+#### Security Features
+
+- **256-bit cryptographic tokens** - Virtually impossible to guess
+- **Wallet verification** - Only authorized addresses can access
+- **Expiration enforcement** - Links automatically expire
+- **Access limits** - Control number of downloads
+- **Revocation** - Instantly invalidate links
+- **No bypass** - All validation enforced
+
+#### Use Cases
+
+- **Team Collaboration**: Share with specific team members
+- **Client Deliverables**: Secure file delivery to clients
+- **NFT Holder Benefits**: Exclusive content for token holders
+- **Temporary Sharing**: Time-limited file access
+- **Controlled Distribution**: Limited download counts
+
+#### Documentation
+
+- [File Sharing Guide](./FILE_SHARING_GUIDE.md) - Complete guide
+- [Quick Start Sharing](./QUICK_START_SHARING.md) - 30-second reference
+- [Wallet-Restricted Sharing](./WALLET_RESTRICTED_SHARING.md) - Access control
+- [Sharing Test Guide](./SHARING_TEST_GUIDE.md) - Testing procedures
 
 ---
 
@@ -324,22 +505,36 @@ walrusbox/
 │   │   ├── FileUploadArea.tsx
 │   │   ├── FileListTable.tsx
 │   │   ├── WalletConnectButton.tsx
-│   │   └── StorageModeBanner.tsx
+│   │   ├── StorageModeBanner.tsx
+│   │   ├── ShareModal.tsx   # File sharing modal
+│   │   ├── SearchBar.tsx    # File search
+│   │   ├── ThemeToggle.tsx  # Dark/light theme
+│   │   ├── FileIcon.tsx     # File type icons
+│   │   └── FilePreviewModal.tsx
 │   │
 │   ├── pages/               # Page components
 │   │   ├── Home.tsx
 │   │   ├── Dashboard.tsx
 │   │   ├── FileView.tsx
+│   │   ├── SharePage.tsx    # Public share page
 │   │   └── NotFound.tsx
 │   │
 │   ├── services/            # Business logic
 │   │   ├── encryption.ts   # AES-256 encryption
 │   │   ├── storage.ts      # Walrus/IndexedDB
 │   │   ├── files.ts        # Blockchain integration
+│   │   ├── localFiles.ts   # Local file metadata
+│   │   ├── share.ts        # Share link management
+│   │   ├── preview.ts      # File preview
+│   │   ├── favorites.ts    # Favorites & recent
+│   │   ├── export.ts       # Export functionality
 │   │   └── slushHelper.ts  # Wallet detection
 │   │
 │   ├── hooks/              # Custom React hooks
 │   │   ├── useWallet.ts   # Wallet integration
+│   │   ├── useTheme.ts    # Theme management
+│   │   ├── useFileFilter.ts # File filtering
+│   │   ├── useKeyboardShortcuts.ts
 │   │   └── use-toast.ts   # Notifications
 │   │
 │   ├── lib/                # Utility functions
@@ -443,6 +638,9 @@ See [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md) for comprehensive testing gui
 ### User Guides
 
 - [Quick Start Guide](./QUICK_START.md) - Get started in 5 minutes
+- [File Sharing Guide](./FILE_SHARING_GUIDE.md) - Complete sharing guide
+- [Quick Start Sharing](./QUICK_START_SHARING.md) - 30-second reference
+- [Wallet-Restricted Sharing](./WALLET_RESTRICTED_SHARING.md) - Access control
 - [Testing Checklist](./TESTING_CHECKLIST.md) - 29-point test guide
 - [Wallet Setup](./WALLET_CONNECTION_SUMMARY.md) - Wallet configuration
 
@@ -452,12 +650,16 @@ See [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md) for comprehensive testing gui
 - [Walrus Storage](./WALRUS_STORAGE_GUIDE.md) - Storage implementation
 - [Smart Contract](./contracts/README.md) - Contract documentation
 - [BCS Serialization](./BCS_SERIALIZATION_FIX.md) - Transaction encoding
+- [Sharing Implementation](./SHARING_WITH_WALLET_COMPLETE.md) - Technical docs
+- [Phase 1 Features](./PHASE1_COMPLETE.md) - Feature implementation
 
 ### Technical Documentation
 
 - [System Status](./SYSTEM_STATUS.md) - System health report
 - [Architecture](./FINAL_REPORT.md) - Complete system overview
 - [API Reference](./WALRUS_API_IMPLEMENTATION.md) - Walrus API guide
+- [Console Messages](./CONSOLE_MESSAGES.md) - Debug guide
+- [Integration Guide](./INTEGRATION_GUIDE.md) - Integration steps
 
 ---
 
@@ -616,26 +818,38 @@ See [Troubleshooting Guide](./ENCRYPTION_FIX_COMPLETE.md#troubleshooting) for so
 
 ### Current Version (v1.0)
 
-- ✅ Wallet integration
-- ✅ File upload/download
-- ✅ Client-side encryption
-- ✅ Blockchain metadata
-- ✅ Access control
+- ✅ Wallet integration (multiple wallets)
+- ✅ File upload/download with progress
+- ✅ Client-side AES-256-GCM encryption
+- ✅ Blockchain metadata storage
+- ✅ Access control and permissions
+- ✅ **Secure file sharing with links**
+- ✅ **Wallet-based access restrictions**
+- ✅ **QR code generation**
+- ✅ **File search and filtering**
+- ✅ **File preview (images, videos, audio)**
+- ✅ **Favorites and recent files**
+- ✅ **Dark/light theme**
+- ✅ **Keyboard shortcuts**
+- ✅ **Export functionality**
 
-### Upcoming Features
+### Phase 2 (Planned)
 
-- 🔄 File sharing with links
+- 🔄 Password-protected share links
+- 🔄 Email notifications on access
 - 🔄 Folder organization
 - 🔄 File versioning
 - 🔄 Collaborative features
-- 🔄 Mobile app
+- 🔄 Advanced analytics
 
 ### Future Plans
 
-- Advanced encryption options
+- NFT-gated file access
+- Token-gated content
+- DAO membership verification
 - Multi-chain support
 - Decentralized identity
-- NFT integration
+- Mobile app (iOS/Android)
 - Enterprise features
 
 ---
@@ -646,6 +860,10 @@ See [Troubleshooting Guide](./ENCRYPTION_FIX_COMPLETE.md#troubleshooting) for so
 - **Package ID**: `0x386cf5f10e6dc8639fcc494123439e333e738280a8f249b638cb7b84328a8885`
 - **Network**: Sui Testnet
 - **Status**: Production Ready
+- **Features**: 15+ Phase 1 features implemented
+- **Components**: 25+ React components
+- **Services**: 10+ business logic services
+- **Documentation**: 20+ comprehensive guides
 
 ---
 

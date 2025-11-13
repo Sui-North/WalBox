@@ -8,6 +8,7 @@ import { StorageModeBanner } from '@/components/StorageModeBanner';
 import { encryptionService } from '@/services/encryption';
 import { storageService } from '@/services/storage';
 import { filesService } from '@/services/files';
+import { localFilesService } from '@/services/localFiles';
 import { toast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -112,6 +113,17 @@ export const FileUploadArea = () => {
       
       // Store keyId mapping (in production, use a more secure storage mechanism)
       localStorage.setItem(`key_${fileId}`, keyId);
+
+      // Step 5: Store local file metadata for sharing
+      localFilesService.saveFile({
+        id: fileId,
+        name: selectedFile.name,
+        size: selectedFile.size,
+        type: selectedFile.type,
+        uploadedAt: new Date(),
+        visibility: 'private',
+        allowedWallets: [],
+      });
 
       setUploadProgress(100);
 
