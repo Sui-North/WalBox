@@ -6,8 +6,11 @@ import type { BlobMetadata, WalrusUploadResponse, ContentTypeCategory, ImageMeta
 import { blobTrackingService } from './blobTracking';
 import { imageProcessor, videoProcessor, audioProcessor } from './contentProcessors';
 
-// Walrus API endpoint configuration
-const WALRUS_ENDPOINT = import.meta.env.VITE_WALRUS_ENDPOINT || 'https://walrus-api.example.com';
+// Walrus API endpoint configuration - Updated January 2025
+// Using Tudor's working endpoint with CORS support
+const WALRUS_PUBLISHER_URL = import.meta.env.VITE_WALRUS_PUBLISHER_URL || 'https://publisher.walrus-01.tududes.com';
+const WALRUS_AGGREGATOR_URL = import.meta.env.VITE_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
+const WALRUS_ENDPOINT = WALRUS_PUBLISHER_URL; // For backward compatibility
 const USE_MOCK_STORAGE = WALRUS_ENDPOINT.includes('example.com'); // Auto-detect mock mode
 
 /**
@@ -43,9 +46,9 @@ export class StorageService {
       console.log('🐋 Uploading to Walrus network...');
       
       // Walrus HTTP API uses PUT method with binary data
-      // Endpoint: /v1/store?epochs=<number>
+      // Endpoint: /v1/blobs?epochs=<number>
       const epochs = 5; // Store for 5 epochs (adjust as needed)
-      const response = await fetch(`${WALRUS_ENDPOINT}/v1/store?epochs=${epochs}`, {
+      const response = await fetch(`${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=${epochs}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/octet-stream',
@@ -163,8 +166,7 @@ export class StorageService {
       
       // Walrus HTTP API download endpoint: /v1/{blob_id}
       // Use aggregator endpoint for downloads
-      const aggregatorEndpoint = WALRUS_ENDPOINT.replace('publisher', 'aggregator');
-      const response = await fetch(`${aggregatorEndpoint}/v1/${blobId}`, {
+      const response = await fetch(`${WALRUS_AGGREGATOR_URL}/v1/${blobId}`, {
         method: 'GET',
       });
 
