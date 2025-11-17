@@ -2,6 +2,10 @@
 // Uses fetch API to interact with Walrus storage endpoint
 // Falls back to IndexedDB for local testing when Walrus is unavailable
 
+import type { BlobMetadata, WalrusUploadResponse, ContentTypeCategory, ImageMetadata, VideoMetadata, AudioMetadata } from '@/types/walrus';
+import { blobTrackingService } from './blobTracking';
+import { imageProcessor, videoProcessor, audioProcessor } from './contentProcessors';
+
 // Walrus API endpoint configuration
 const WALRUS_ENDPOINT = import.meta.env.VITE_WALRUS_ENDPOINT || 'https://walrus-api.example.com';
 const USE_MOCK_STORAGE = WALRUS_ENDPOINT.includes('example.com'); // Auto-detect mock mode
@@ -13,13 +17,22 @@ const USE_MOCK_STORAGE = WALRUS_ENDPOINT.includes('example.com'); // Auto-detect
  * @returns Walrus object hash (vector<u8> format for Sui contract)
  */
 export class StorageService {
+  private lastWalrusResponse: WalrusUploadResponse | null = null;
+  private lastOriginalSize: number = 0;
+  private lastOriginalFile: File | null = null;
+
   /**
    * Upload encrypted blob to Walrus
    * @param blob - Encrypted file blob
    * @param fileName - Original file name (for metadata)
+   * @param originalSize - Size before encryption (optional)
+   * @param originalFile - Original file before encryption (for metadata extraction)
    * @returns Object hash as Uint8Array (for Sui contract)
    */
-  async uploadToWalrus(blob: Blob, fileName: string): Promise<Uint8Array> {
+  async uploadToWalrus(blob: Blob, fileName: string, originalSize?: number, originalFile?: File): Promise<Uint8Array> {
+    // Store original size and file for tracking
+    this.lastOriginalSize = originalSize || blob.size;
+    this.lastOriginalFile = originalFile || null;
     // Use mock storage for local testing if Walrus endpoint is not configured
     if (USE_MOCK_STORAGE) {
       console.log('📦 Using mock storage (IndexedDB) for local testing');
@@ -49,6 +62,9 @@ export class StorageService {
       const result = await response.json();
       console.log('Walrus response:', result);
       
+      // Store response for tracking
+      this.lastWalrusResponse = result;
+      
       // Walrus returns either newlyCreated or alreadyCertified
       // Extract blob ID from the response
       let blobId: string;
@@ -57,7 +73,7 @@ export class StorageService {
         blobId = result.newlyCreated.blobObject.blobId;
         console.log('✅ New blob created:', blobId);
         console.log(`📊 Storage cost: ${result.newlyCreated.cost}`);
-        console.log(`📦 Encoded size: ${result.newlyCreated.encodedSize} bytes`);
+        console.log(`📦 Encoded size: ${result.newlyCreated.encodedLength} bytes`);
         console.log(`🔗 Walrus URL: https://aggregator.walrus-testnet.walrus.space/v1/${blobId}`);
         console.log(`🔍 Walrus Scan: https://walrus-testnet-explorer.walrus.space/blob/${blobId}`);
       } else if (result.alreadyCertified) {
@@ -70,7 +86,10 @@ export class StorageService {
         throw new Error('Unexpected Walrus response format');
       }
       
-      // Store blob ID metadata for tracking
+      // Track comprehensive blob metadata
+      await this.trackBlobMetadata(blobId, fileName, blob.size, blob.type, result, epochs);
+      
+      // Store blob ID metadata for tracking (legacy)
       this.storeBlobMetadata(blobId, fileName, blob.size, blob.type);
       
       // Convert blob ID to Uint8Array for Sui contract
@@ -156,6 +175,9 @@ export class StorageService {
       }
 
       console.log('✅ Downloaded from Walrus');
+      
+      // Track download
+      await this.trackDownload(blobId);
       
       // Return as blob
       return await response.blob();
@@ -252,7 +274,134 @@ export class StorageService {
   }
 
   /**
-   * Store blob metadata for tracking and Walrus Scan integration
+   * Track comprehensive blob metadata using new tracking system
+   */
+  private async trackBlobMetadata(
+    blobId: string,
+    fileName: string,
+    encryptedSize: number,
+    mimeType: string,
+    walrusResponse: WalrusUploadResponse,
+    storageEpochs: number
+  ): Promise<void> {
+    try {
+      // Extract data from Walrus response
+      let storageCost = 0;
+      let encodedSize = encryptedSize;
+      let uploadEpoch = 0;
+      let expirationEpoch = storageEpochs;
+      let transactionDigest: string | undefined;
+
+      if (walrusResponse.newlyCreated) {
+        storageCost = parseFloat(walrusResponse.newlyCreated.cost);
+        encodedSize = parseInt(walrusResponse.newlyCreated.encodedLength);
+        uploadEpoch = parseInt(walrusResponse.newlyCreated.blobObject.storage.startEpoch);
+        expirationEpoch = parseInt(walrusResponse.newlyCreated.blobObject.storage.endEpoch);
+      } else if (walrusResponse.alreadyCertified) {
+        transactionDigest = walrusResponse.alreadyCertified.event.txDigest;
+        expirationEpoch = parseInt(walrusResponse.alreadyCertified.endEpoch);
+      }
+
+      // Calculate expiration date (approximate: 1 epoch = 1 day)
+      const epochDurationMs = 24 * 60 * 60 * 1000; // 1 day in milliseconds
+      const expiresAt = new Date(Date.now() + (expirationEpoch - uploadEpoch) * epochDurationMs);
+
+      // Extract content-specific metadata
+      let imageMetadata: ImageMetadata | undefined;
+      let videoMetadata: VideoMetadata | undefined;
+      let audioMetadata: AudioMetadata | undefined;
+
+      if (this.lastOriginalFile) {
+        const contentType = this.categorizeContentType(mimeType);
+        
+        if (contentType === 'image') {
+          console.log('📸 Extracting image metadata...');
+          imageMetadata = await imageProcessor.extractMetadata(this.lastOriginalFile);
+        } else if (contentType === 'video') {
+          console.log('🎥 Extracting video metadata...');
+          videoMetadata = await videoProcessor.extractMetadata(this.lastOriginalFile);
+        } else if (contentType === 'audio') {
+          console.log('🎵 Extracting audio metadata...');
+          audioMetadata = await audioProcessor.extractMetadata(this.lastOriginalFile);
+        }
+      }
+
+      // Create blob metadata
+      const metadata: BlobMetadata = {
+        blobId,
+        fileId: '', // Will be set after FileObject creation
+        objectId: '', // Will be set after FileObject creation
+        fileName,
+        originalSize: this.lastOriginalSize,
+        encryptedSize,
+        encodedSize,
+        mimeType,
+        contentType: this.categorizeContentType(mimeType),
+        walrusResponse,
+        storageCost,
+        storageEpochs,
+        uploadEpoch,
+        expirationEpoch,
+        transactionDigest,
+        aggregatorUrl: `https://aggregator.walrus-testnet.walrus.space/v1/${blobId}`,
+        walrusScanUrl: `https://walrus-testnet-explorer.walrus.space/blob/${blobId}`,
+        uploadedAt: new Date(),
+        expiresAt,
+        status: 'active',
+        imageMetadata,
+        videoMetadata,
+        audioMetadata,
+        downloadCount: 0,
+        reuseCount: 0
+      };
+
+      // Track in new system
+      await blobTrackingService.trackBlob(metadata);
+    } catch (error) {
+      console.error('Failed to track blob metadata:', error);
+      // Don't throw - tracking failure shouldn't break upload
+    }
+  }
+
+  /**
+   * Categorize MIME type into content type category
+   */
+  private categorizeContentType(mimeType: string): ContentTypeCategory {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.includes('text')) return 'document';
+    if (mimeType.includes('zip') || mimeType.includes('archive') || mimeType.includes('compressed')) return 'archive';
+    return 'other';
+  }
+
+  /**
+   * Get last Walrus response (for external use)
+   */
+  getLastWalrusResponse(): WalrusUploadResponse | null {
+    return this.lastWalrusResponse;
+  }
+
+  /**
+   * Track blob download
+   */
+  private async trackDownload(blobId: string): Promise<void> {
+    try {
+      const metadata = await blobTrackingService.getBlobMetadata(blobId);
+      if (metadata) {
+        await blobTrackingService.updateBlobMetadata(blobId, {
+          downloadCount: metadata.downloadCount + 1,
+          lastAccessed: new Date()
+        });
+      }
+    } catch (error) {
+      console.error('Failed to track download:', error);
+      // Don't throw - tracking failure shouldn't break download
+    }
+  }
+
+  /**
+   * Store blob metadata for tracking and Walrus Scan integration (legacy)
    * @param blobId - Walrus blob ID
    * @param fileName - Original file name
    * @param fileSize - File size in bytes

@@ -189,7 +189,7 @@ export default function SharePage() {
               Shared File
             </h1>
             <p className="text-muted-foreground">
-              Someone shared a file with you via WalrusBox
+              Someone shared a file with you via WalBox
             </p>
           </div>
 
@@ -268,7 +268,7 @@ export default function SharePage() {
           {/* Info Box */}
           <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20 text-sm text-muted-foreground">
             <p className="mb-2">
-              <strong>About WalrusBox:</strong> A decentralized file storage platform built on Sui blockchain and Walrus storage.
+              <strong>About WalBox:</strong> A decentralized file storage platform built on Sui blockchain and Walrus storage.
             </p>
             <p>
               This file is securely stored and shared. Download it before the link expires.

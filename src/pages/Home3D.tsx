@@ -100,7 +100,7 @@ const Home3D = () => {
                 <Cloud className="h-10 w-10 text-primary drop-shadow-[0_0_10px_rgba(14,165,233,0.5)]" />
               </motion.div>
               <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-                WalrusBox
+                WalBox
               </span>
             </motion.div>
             <WalletConnectButton />

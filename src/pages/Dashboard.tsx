@@ -207,7 +207,7 @@ const Dashboard = () => {
             </Button>
             <div className="flex items-center gap-2 group">
               <Cloud className="h-8 w-8 text-primary transition-transform group-hover:scale-110 duration-300" />
-              <span className="text-xl font-bold tracking-tight">WalrusBox</span>
+              <span className="text-xl font-bold tracking-tight">WalBox</span>
             </div>
           </div>
           <div className="flex items-center gap-2">

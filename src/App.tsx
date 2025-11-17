@@ -5,6 +5,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "@mysten/dapp-kit/dist/index.css";
 
+// Import Walrus debug utilities (available in console as walrusDebug)
+import "@/utils/walrusDebug";
+
 // Lazy load pages for code splitting
 const Home = lazy(() => import("./pages/Home"));
 const Dashboard = lazy(() => import("./pages/DashboardAnimated"));
