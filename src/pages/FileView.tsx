@@ -5,6 +5,7 @@ import { localFilesService, LocalFileMetadata } from '@/services/localFiles';
 import { storageService } from '@/services/storage';
 import { WalletConnectButton } from '@/components/WalletConnectButton';
 import { ShareModal } from '@/components/ShareModal';
+import { LazyImage } from '@/components/LazyImage';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -103,7 +104,7 @@ const FileView = () => {
     if (file.type.startsWith('image/')) {
       return (
         <div className="p-8">
-          <img 
+          <LazyImage 
             src={fileUrl} 
             alt={file.name}
             className="max-w-full max-h-96 mx-auto rounded-lg shadow-elevated"

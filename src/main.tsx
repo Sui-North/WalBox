@@ -5,6 +5,7 @@ import { SuiClientProvider, WalletProvider } from "@mysten/dapp-kit";
 import { getFullnodeUrl } from "@mysten/sui/client";
 import App from "./App.tsx";
 import "./index.css";
+import { measurePageLoad } from "./lib/performance";
 
 const queryClient = new QueryClient();
 const networks = {
@@ -12,6 +13,9 @@ const networks = {
   mainnet: { url: getFullnodeUrl("mainnet") },
   devnet: { url: getFullnodeUrl("devnet") },
 };
+
+// Measure page load performance
+measurePageLoad();
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

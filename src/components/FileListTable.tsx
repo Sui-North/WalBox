@@ -15,12 +15,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Eye, Share2, Trash2, Lock, Unlock, FolderOpen } from 'lucide-react';
 import { ShareModal } from './ShareModal';
+import { VirtualFileList } from './VirtualFileList';
 import { toast } from '@/hooks/use-toast';
 
 interface FileListTableProps {
   files: FileMetadata[];
   onRefresh: () => void;
 }
+
+// Use virtual scrolling for large file lists
+const VIRTUAL_SCROLL_THRESHOLD = 100;
 
 export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
   const navigate = useNavigate();
@@ -64,6 +68,11 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
       setShareModalFile(newLocalFile);
     }
   };
+
+  // Use virtual scrolling for large lists
+  if (files.length > VIRTUAL_SCROLL_THRESHOLD) {
+    return <VirtualFileList files={files} onRefresh={onRefresh} />;
+  }
 
   if (files.length === 0) {
     return (
