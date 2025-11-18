@@ -585,11 +585,64 @@ export class SealStorageService {
   }
 
   /**
-   * Verify file integrity
+   * Verify a single blob exists on Walrus network
+   * @param blobId - Blob ID to verify
+   * @returns Verification result with details
+   */
+  async verifyBlob(blobId: string): Promise<{
+    exists: boolean;
+    size?: number;
+    responseTime?: number;
+    error?: string;
+  }> {
+    const startTime = Date.now();
+    
+    try {
+      const url = `${this.config.aggregatorUrl}/v1/${blobId}`;
+      
+      const response = await axios.head(url, {
+        timeout: 10000, // 10 seconds
+      });
+
+      const responseTime = Date.now() - startTime;
+      const size = response.headers['content-length'] 
+        ? parseInt(response.headers['content-length'], 10) 
+        : undefined;
+
+      return {
+        exists: response.status === 200,
+        size,
+        responseTime
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return {
+          exists: false,
+          responseTime: Date.now() - startTime,
+          error: 'Blob not found'
+        };
+      }
+      
+      return {
+        exists: false,
+        responseTime: Date.now() - startTime,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Verify file integrity with optional content hash verification
    * @param metadata - File metadata
+   * @param verifyContentHash - Whether to download and verify content hash (default: false)
    * @returns Verification result
    */
-  async verifyFile(metadata: SealFileMetadata): Promise<FileVerificationResult> {
+  async verifyFile(
+    metadata: SealFileMetadata, 
+    verifyContentHash: boolean = false
+  ): Promise<FileVerificationResult> {
+    const startTime = Date.now();
+    
     try {
       const chunkVerifications: FileVerificationResult['chunkVerifications'] = [];
       let allChunksPresent = true;
@@ -600,14 +653,14 @@ export class SealStorageService {
       
       if (chunks.length === 0) {
         // Single blob verification
-        const exists = await this.verifyBlobExists(metadata.blobId);
+        const result = await this.verifyBlob(metadata.blobId);
         chunkVerifications.push({
           index: 0,
           blobId: metadata.blobId,
-          verified: exists,
-          error: exists ? undefined : 'Blob not found'
+          verified: result.exists,
+          error: result.error
         });
-        allChunksPresent = exists;
+        allChunksPresent = result.exists;
       } else {
         // Verify each chunk
         for (let i = 0; i < chunks.length; i++) {
@@ -624,30 +677,70 @@ export class SealStorageService {
             continue;
           }
 
-          const exists = await this.verifyBlobExists(chunk.blobId);
+          const result = await this.verifyBlob(chunk.blobId);
           chunkVerifications.push({
             index: i,
             blobId: chunk.blobId,
-            verified: exists,
-            error: exists ? undefined : 'Blob not found'
+            verified: result.exists,
+            error: result.error
           });
 
-          if (!exists) {
+          if (!result.exists) {
             allChunksPresent = false;
           }
         }
       }
 
       // Optionally verify content hash by downloading and checking
-      // (skipped for performance - would require full download)
+      if (verifyContentHash && allChunksPresent && metadata.contentHash) {
+        try {
+          console.log('🔍 Verifying content hash by downloading file...');
+          
+          // Download chunks
+          const downloadedChunks = await this.downloadChunks(metadata, {
+            decrypt: false,
+            verifyIntegrity: false // Skip integrity check during verification
+          });
+
+          // Reassemble
+          const reassembledData = await sealChunkingService.reassembleChunks(downloadedChunks);
+
+          // Compute hash
+          const actualHash = await this.generateContentHash(reassembledData);
+
+          // Compare
+          contentHashMatch = actualHash === metadata.contentHash;
+
+          if (!contentHashMatch) {
+            console.error('❌ Content hash mismatch:', {
+              expected: metadata.contentHash,
+              actual: actualHash
+            });
+          } else {
+            console.log('✅ Content hash verified successfully');
+          }
+        } catch (error) {
+          console.error('❌ Failed to verify content hash:', error);
+          contentHashMatch = false;
+        }
+      }
 
       const success = allChunksPresent && contentHashMatch;
+      const duration = Date.now() - startTime;
+
+      console.log(`${success ? '✅' : '❌'} Verification complete in ${duration}ms:`, {
+        fileName: metadata.fileName,
+        allChunksPresent,
+        contentHashMatch,
+        verifiedContentHash: verifyContentHash
+      });
 
       return {
         success,
         contentHashMatch,
         allChunksPresent,
         chunkVerifications,
+        verifiedAt: new Date(),
         error: success ? undefined : 'Verification failed'
       };
     } catch (error) {
@@ -656,6 +749,7 @@ export class SealStorageService {
         contentHashMatch: false,
         allChunksPresent: false,
         chunkVerifications: [],
+        verifiedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }

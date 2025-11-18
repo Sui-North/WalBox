@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { FileMetadata, filesService } from '@/services/files';
 import { localFilesService, LocalFileMetadata } from '@/services/localFiles';
 import { storageService } from '@/services/storage';
+import { sealStorageService } from '@/services/seal/sealStorage';
+import type { SealFileMetadata, FileVerificationResult } from '@/services/seal/sealTypes';
 import {
   Table,
   TableBody,
@@ -20,7 +22,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Eye, Share2, Trash2, Lock, Unlock, FolderOpen, Shield, ShieldOff } from 'lucide-react';
+import { 
+  Eye, 
+  Share2, 
+  Trash2, 
+  Lock, 
+  Unlock, 
+  FolderOpen, 
+  Shield, 
+  ShieldOff, 
+  CheckCircle2, 
+  XCircle, 
+  AlertCircle, 
+  Loader2 
+} from 'lucide-react';
 import { ShareModal } from './ShareModal';
 import { VirtualFileList } from './VirtualFileList';
 import { toast } from '@/hooks/use-toast';
@@ -44,6 +59,9 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
   const navigate = useNavigate();
   const [shareModalFile, setShareModalFile] = useState<LocalFileMetadata | null>(null);
   const [encryptionFilter, setEncryptionFilter] = useState<'all' | 'encrypted' | 'unencrypted'>('all');
+  const [verifyingFiles, setVerifyingFiles] = useState<Set<string>>(new Set());
+  const [verificationResults, setVerificationResults] = useState<Map<string, FileVerificationResult>>(new Map());
+  const [batchVerifying, setBatchVerifying] = useState(false);
 
   const handleDelete = async (file: FileMetadata) => {
     try {
@@ -82,6 +100,135 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
       localFilesService.saveFile(newLocalFile);
       setShareModalFile(newLocalFile);
     }
+  };
+
+  const handleVerifyFile = async (file: FileMetadata) => {
+    // Check if file is encrypted (has Seal metadata)
+    const sealMetadataKey = `seal_metadata_${file.id}`;
+    const sealMetadataStr = localStorage.getItem(sealMetadataKey);
+    
+    if (!sealMetadataStr) {
+      toast({
+        title: "Verification Not Available",
+        description: "This file doesn't have Seal encryption metadata",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const sealMetadata: SealFileMetadata = JSON.parse(sealMetadataStr);
+      
+      setVerifyingFiles(prev => new Set(prev).add(file.id));
+
+      const result = await sealStorageService.verifyFile(sealMetadata, false);
+      
+      setVerificationResults(prev => new Map(prev).set(file.id, result));
+      
+      if (result.success) {
+        toast({
+          title: "✅ Verification Successful",
+          description: `All ${result.chunkVerifications.length} chunk(s) verified successfully`,
+        });
+      } else {
+        // Mark file as corrupted in local storage
+        const corruptedKey = `file_corrupted_${file.id}`;
+        localStorage.setItem(corruptedKey, JSON.stringify({
+          timestamp: new Date().toISOString(),
+          error: result.error,
+          chunkFailures: result.chunkVerifications.filter(c => !c.verified)
+        }));
+        
+        // Show detailed error information
+        const failedChunks = result.chunkVerifications.filter(c => !c.verified);
+        toast({
+          title: "❌ Verification Failed",
+          description: `${failedChunks.length} chunk(s) failed verification. File may be corrupted.`,
+          variant: "destructive",
+          action: {
+            label: "Re-upload",
+            onClick: () => handleReuploadCorrupted(file)
+          }
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Verification Error",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setVerifyingFiles(prev => {
+        const next = new Set(prev);
+        next.delete(file.id);
+        return next;
+      });
+    }
+  };
+
+  const handleReuploadCorrupted = (file: FileMetadata) => {
+    // Clear corrupted flag
+    const corruptedKey = `file_corrupted_${file.id}`;
+    localStorage.removeItem(corruptedKey);
+    
+    // Navigate to upload page or show upload dialog
+    toast({
+      title: "Re-upload Required",
+      description: "Please upload the file again to replace the corrupted version",
+    });
+    
+    // Optionally delete the corrupted file
+    handleDelete(file);
+  };
+
+  const isFileCorrupted = (fileId: string): boolean => {
+    const corruptedKey = `file_corrupted_${fileId}`;
+    return !!localStorage.getItem(corruptedKey);
+  };
+
+  const handleBatchVerify = async () => {
+    const encryptedFiles = filteredFiles.filter(file => isFileEncrypted(file.id));
+    
+    if (encryptedFiles.length === 0) {
+      toast({
+        title: "No Encrypted Files",
+        description: "No encrypted files to verify",
+      });
+      return;
+    }
+
+    setBatchVerifying(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const file of encryptedFiles) {
+      const sealMetadataKey = `seal_metadata_${file.id}`;
+      const sealMetadataStr = localStorage.getItem(sealMetadataKey);
+      
+      if (!sealMetadataStr) continue;
+
+      try {
+        const sealMetadata: SealFileMetadata = JSON.parse(sealMetadataStr);
+        const result = await sealStorageService.verifyFile(sealMetadata, false);
+        
+        setVerificationResults(prev => new Map(prev).set(file.id, result));
+        
+        if (result.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    setBatchVerifying(false);
+
+    toast({
+      title: "Batch Verification Complete",
+      description: `${successCount} verified, ${failCount} failed out of ${encryptedFiles.length} files`,
+    });
   };
 
   // Filter files by encryption status
@@ -130,7 +277,7 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
 
   return (
     <>
-      {/* Encryption Filter */}
+      {/* Encryption Filter and Batch Actions */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Filter by encryption:</span>
@@ -154,6 +301,28 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
               </SelectItem>
             </SelectContent>
           </Select>
+          
+          {filteredFiles.some(f => isFileEncrypted(f.id)) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBatchVerify}
+              disabled={batchVerifying}
+              className="gap-2"
+            >
+              {batchVerifying ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Verify All
+                </>
+              )}
+            </Button>
+          )}
         </div>
         <div className="text-sm text-muted-foreground">
           Showing {filteredFiles.length} of {files.length} files
@@ -168,16 +337,23 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
               <TableHead className="font-semibold">Size</TableHead>
               <TableHead className="font-semibold">Uploaded</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
+              <TableHead className="font-semibold">Verification</TableHead>
               <TableHead className="text-right font-semibold">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredFiles.map((file, index) => {
               const encrypted = isFileEncrypted(file.id);
+              const isVerifying = verifyingFiles.has(file.id);
+              const verificationResult = verificationResults.get(file.id);
+              const corrupted = isFileCorrupted(file.id);
+              
               return (
                 <TableRow 
                   key={file.id} 
-                  className="hover:bg-primary/5 transition-colors duration-200 border-white/5 animate-fade-in"
+                  className={`hover:bg-primary/5 transition-colors duration-200 border-white/5 animate-fade-in ${
+                    corrupted ? 'bg-destructive/5' : ''
+                  }`}
                   style={{ animationDelay: `${index * 0.05}s` }}
                 >
                   <TableCell className="font-medium">
@@ -187,6 +363,12 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
                         <Badge variant="outline" className="gap-1 text-xs border-primary/30 bg-primary/10">
                           <Shield className="h-3 w-3 text-primary" />
                           Encrypted
+                        </Badge>
+                      )}
+                      {corrupted && (
+                        <Badge variant="destructive" className="gap-1 text-xs">
+                          <XCircle className="h-3 w-3" />
+                          Corrupted
                         </Badge>
                       )}
                     </div>
@@ -220,32 +402,99 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
                       )}
                     </div>
                   </TableCell>
+                  <TableCell>
+                    {encrypted ? (
+                      <div className="flex items-center gap-2">
+                        {isVerifying ? (
+                          <Badge variant="outline" className="gap-1 text-xs">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Verifying...
+                          </Badge>
+                        ) : verificationResult ? (
+                          <>
+                            <Badge 
+                              variant={verificationResult.success ? "default" : "destructive"}
+                              className="gap-1 text-xs"
+                            >
+                              {verificationResult.success ? (
+                                <>
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Verified
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle className="h-3 w-3" />
+                                  Failed
+                                </>
+                              )}
+                            </Badge>
+                            {verificationResult.verifiedAt && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(verificationResult.verifiedAt).toLocaleTimeString()}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
+                            <AlertCircle className="h-3 w-3" />
+                            Not Verified
+                          </Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">N/A</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        key={`view-${file.id}`}
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => navigate(`/file/${file.id}`)}
-                        className="hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        key={`share-${file.id}`}
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleShare(file)}
-                        className="hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
-                      >
-                        <Share2 className="h-4 w-4" />
-                      </Button>
+                      {encrypted && !corrupted && (
+                        <Button
+                          key={`verify-${file.id}`}
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleVerifyFile(file)}
+                          disabled={isVerifying}
+                          className="hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
+                          title="Verify file integrity"
+                        >
+                          {isVerifying ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
+                      {!corrupted && (
+                        <Button
+                          key={`view-${file.id}`}
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => navigate(`/file/${file.id}`)}
+                          className="hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
+                          title="View file"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!corrupted && (
+                        <Button
+                          key={`share-${file.id}`}
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleShare(file)}
+                          className="hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
+                          title="Share file"
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         key={`delete-${file.id}`}
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(file)}
                         className="hover:bg-destructive/10 hover:text-destructive transition-all duration-200 hover:scale-110"
+                        title={corrupted ? "Delete corrupted file" : "Delete file"}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

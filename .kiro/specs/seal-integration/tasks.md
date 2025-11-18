@@ -180,26 +180,26 @@
     - Test key rotation
     - _Requirements: 10.4_
 
-- [ ] 9. Implement data integrity verification
-  - [ ] 9.1 Add content hash generation
+- [x] 9. Implement data integrity verification
+  - [x] 9.1 Add content hash generation
     - Compute SHA-256 hash during file upload
     - Store content hash in file metadata
     - _Requirements: 7.1_
 
-  - [ ] 9.2 Implement verification endpoints
+  - [x] 9.2 Implement verification endpoints
     - Create verifyBlob() function in sealStorage.ts
     - Check blob existence on Walrus network
     - Verify content hash matches on download
     - _Requirements: 7.2, 7.3, 7.4_
 
-  - [ ] 9.3 Add verification UI components
+  - [x] 9.3 Add verification UI components
     - Add verification status indicator in file list
     - Create manual verification button for files
     - Implement batch verification for multiple files
     - Display verification results with timestamps
     - _Requirements: 7.5, 7.7_
 
-  - [ ] 9.4 Handle verification failures
+  - [x] 9.4 Handle verification failures
     - Mark corrupted files in UI
     - Notify users of verification failures
     - Provide re-upload option for corrupted files

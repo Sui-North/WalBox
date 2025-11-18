@@ -229,6 +229,7 @@ export interface FileVerificationResult {
     verified: boolean;
     error?: string;
   }>;
+  verifiedAt?: Date;
   error?: string;
 }
 
