@@ -99,6 +99,22 @@ export interface AudioMetadata {
 }
 
 /**
+ * Encryption algorithm options
+ */
+export type EncryptionAlgorithm = 'AES-GCM';
+
+/**
+ * Chunk metadata for distributed storage
+ */
+export interface ChunkMetadata {
+  index: number;
+  size: number;
+  hash: string; // SHA-256 hash of chunk content
+  blobId?: string; // Walrus blob ID after upload
+  objectId?: string; // Sui object ID after upload
+}
+
+/**
  * Comprehensive blob metadata for tracking
  */
 export interface BlobMetadata {
@@ -146,6 +162,32 @@ export interface BlobMetadata {
   lastAccessed?: Date;
   reuseCount: number; // How many files share this blob
   contentHash?: string; // For duplicate detection
+}
+
+/**
+ * Extended blob metadata with Seal-specific fields for encrypted files
+ * Maintains backward compatibility with BlobMetadata
+ */
+export interface SealFileMetadata extends BlobMetadata {
+  // Encryption fields
+  isEncrypted: boolean;
+  encryptionAlgorithm?: EncryptionAlgorithm;
+  encryptionKeyId?: string; // Reference to stored key
+  initializationVector?: string; // Base64 encoded IV
+  
+  // Chunking fields
+  isChunked: boolean;
+  chunkCount?: number;
+  chunkSize?: number;
+  chunks?: ChunkMetadata[];
+  
+  // Seal-specific fields
+  sealVersion: string;
+  contentHash: string; // SHA-256 hash for integrity verification (required for Seal)
+  
+  // Sui blockchain fields (array for chunked files)
+  objectIds: string[];
+  transactionDigests: string[];
 }
 
 /**

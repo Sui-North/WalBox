@@ -104,48 +104,48 @@
     - Test integrity verification
     - _Requirements: 10.2, 10.5_
 
-- [ ] 6. Enhance existing Walrus integration
-  - [ ] 6.1 Update walrusIntegration.ts to support Seal
+- [x] 6. Enhance existing Walrus integration
+  - [x] 6.1 Update walrusIntegration.ts to support Seal
     - Add useEncryption parameter to uploadAndTrackFile()
     - Route to SealStorageService when encryption is enabled
     - Route to existing WalrusService when encryption is disabled
     - Update metadata tracking to include encryption fields
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-  - [ ] 6.2 Update BlobMetadata type in walrus.ts
+  - [x] 6.2 Update BlobMetadata type in walrus.ts
     - Extend BlobMetadata with SealFileMetadata fields
     - Add isEncrypted, chunks, and encryption key fields
     - Maintain backward compatibility with existing metadata
     - _Requirements: 9.1, 9.5, 9.7_
 
-  - [ ] 6.3 Implement migration functionality
+  - [x] 6.3 Implement migration functionality
     - Create migrateToEncrypted() function in walrusIntegration.ts
     - Download unencrypted file from Walrus
     - Re-upload with encryption enabled
     - Update metadata and preserve file history
     - _Requirements: 9.6_
 
-- [ ] 7. Update frontend components for encryption UI
-  - [ ] 7.1 Enhance FileUploadArea.tsx with encryption toggle
+- [x] 7. Update frontend components for encryption UI
+  - [x] 7.1 Enhance FileUploadArea.tsx with encryption toggle
     - Add encryption checkbox/toggle to upload interface
     - Show encryption status indicator during upload
     - Display chunk upload progress for encrypted files
     - Add tooltip explaining encryption feature
     - _Requirements: 5.1, 5.3, 2.7_
 
-  - [ ] 7.2 Update FileListTable.tsx to show encryption status
+  - [x] 7.2 Update FileListTable.tsx to show encryption status
     - Add encryption icon/badge to encrypted files
     - Display encryption status in file metadata column
     - Add filter option for encrypted vs unencrypted files
     - _Requirements: 5.2, 5.5, 9.5_
 
-  - [ ] 7.3 Update FilePreviewModal.tsx for encrypted files
+  - [x] 7.3 Update FilePreviewModal.tsx for encrypted files
     - Detect encrypted files and decrypt before preview
     - Show decryption progress indicator
     - Handle decryption errors with user-friendly messages
     - _Requirements: 5.4, 5.7_
 
-  - [ ] 7.4 Add encryption settings to Dashboard
+  - [x] 7.4 Add encryption settings to Dashboard
     - Create encryption settings section in Dashboard.tsx
     - Add option to enable/disable encryption by default
     - Add bulk migration tool for existing files

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Download, ExternalLink } from 'lucide-react';
+import { X, Download, ExternalLink, Shield, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -7,9 +7,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { previewService } from '@/services/preview';
 import { storageService } from '@/services/storage';
 import { encryptionService } from '@/services/encryption';
+import { sealStorageService } from '@/services/seal/sealStorage';
+import type { SealFileMetadata, DownloadProgress } from '@/services/seal/sealTypes';
 
 interface FilePreviewModalProps {
   isOpen: boolean;
@@ -18,6 +22,7 @@ interface FilePreviewModalProps {
   fileType?: string;
   walrusHash: Uint8Array;
   onDownload: () => void;
+  fileId?: string;
 }
 
 export function FilePreviewModal({
@@ -27,11 +32,15 @@ export function FilePreviewModal({
   fileType,
   walrusHash,
   onDownload,
+  fileId,
 }: FilePreviewModalProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEncrypted, setIsEncrypted] = useState(false);
+  const [decryptionProgress, setDecryptionProgress] = useState(0);
+  const [decryptionStage, setDecryptionStage] = useState<string>('');
 
   const previewType = previewService.getPreviewType(fileName, fileType);
 
@@ -44,11 +53,13 @@ export function FilePreviewModal({
       }
       setTextContent(null);
       setError(null);
+      setDecryptionProgress(0);
+      setDecryptionStage('');
       return;
     }
 
     loadPreview();
-  }, [isOpen, fileName]);
+  }, [isOpen, fileName, fileId]);
 
   const loadPreview = async () => {
     if (!previewService.canPreview(fileName, fileType)) {
@@ -58,22 +69,76 @@ export function FilePreviewModal({
 
     setIsLoading(true);
     setError(null);
+    setDecryptionProgress(0);
+    setDecryptionStage('');
 
     try {
-      // Download file from storage
-      const encryptedBlob = await storageService.downloadFromWalrus(walrusHash);
-      
-      // Try to decrypt (will return as-is if encryption not available)
-      const keyId = localStorage.getItem(`key_${fileName}`);
-      let blob = encryptedBlob;
-      
-      if (keyId) {
+      // Check if file is encrypted with Seal
+      const sealKey = fileId ? localStorage.getItem(`seal_key_${fileId}`) : null;
+      setIsEncrypted(!!sealKey);
+
+      let blob: Blob;
+
+      if (sealKey && fileId) {
+        // File is encrypted with Seal - use Seal storage service
+        setDecryptionStage('Downloading encrypted file...');
+        
+        // We need to construct metadata for download
+        // In a real implementation, this should be stored and retrieved properly
+        const metadata: Partial<SealFileMetadata> = {
+          blobId: Array.from(walrusHash).map(b => b.toString(16).padStart(2, '0')).join(''),
+          fileId: fileId,
+          fileName: fileName,
+          encryptedSize: 0, // Unknown at this point
+          isEncrypted: true,
+          isChunked: false,
+          chunks: [],
+          initializationVector: '',
+          encryptionAlgorithm: 'AES-GCM',
+        };
+
         try {
-          blob = await encryptionService.decrypt(encryptedBlob, keyId);
+          blob = await sealStorageService.downloadFile(
+            metadata as SealFileMetadata,
+            {
+              decrypt: true,
+              encryptionKey: sealKey,
+              onProgress: (progress: DownloadProgress) => {
+                setDecryptionProgress(progress.percentage);
+                if (progress.stage === 'downloading') {
+                  setDecryptionStage(`Downloading chunk ${progress.currentChunk || 0}/${progress.totalChunks || 1}...`);
+                } else if (progress.stage === 'decrypting') {
+                  setDecryptionStage('Decrypting file...');
+                } else if (progress.stage === 'reassembling') {
+                  setDecryptionStage('Reassembling chunks...');
+                }
+              }
+            }
+          );
         } catch (decryptError) {
-          console.warn('Decryption failed, using encrypted blob:', decryptError);
+          console.error('Seal decryption failed:', decryptError);
+          setError('Failed to decrypt file. The encryption key may be invalid or the file may be corrupted.');
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        // Try legacy encryption or unencrypted
+        const encryptedBlob = await storageService.downloadFromWalrus(walrusHash);
+        
+        const keyId = localStorage.getItem(`key_${fileName}`);
+        blob = encryptedBlob;
+        
+        if (keyId) {
+          try {
+            setDecryptionStage('Decrypting file...');
+            blob = await encryptionService.decrypt(encryptedBlob, keyId);
+          } catch (decryptError) {
+            console.warn('Legacy decryption failed, using encrypted blob:', decryptError);
+          }
         }
       }
+
+      setDecryptionStage('Generating preview...');
 
       // Generate preview based on type
       if (previewType === 'image') {
@@ -88,9 +153,11 @@ export function FilePreviewModal({
       }
     } catch (err) {
       console.error('Preview error:', err);
-      setError('Failed to load preview');
+      setError(err instanceof Error ? err.message : 'Failed to load preview');
     } finally {
       setIsLoading(false);
+      setDecryptionProgress(0);
+      setDecryptionStage('');
     }
   };
 
@@ -99,10 +166,18 @@ export function FilePreviewModal({
       <DialogContent className="max-w-4xl max-h-[90vh] glass-effect border-primary/20">
         <DialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl font-semibold truncate pr-8">
-              {fileName}
-            </DialogTitle>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <DialogTitle className="text-xl font-semibold truncate">
+                {fileName}
+              </DialogTitle>
+              {isEncrypted && (
+                <Badge variant="outline" className="gap-1 text-xs border-primary/30 bg-primary/10 shrink-0">
+                  <Shield className="h-3 w-3 text-primary" />
+                  Encrypted
+                </Badge>
+              )}
+            </div>
+            <div className="flex gap-2 shrink-0">
               <Button
                 variant="outline"
                 size="icon"
@@ -125,14 +200,36 @@ export function FilePreviewModal({
 
         <div className="mt-4 overflow-auto max-h-[calc(90vh-120px)]">
           {isLoading && (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <div className="relative">
+                <Loader2 className="h-12 w-12 text-primary animate-spin" />
+                {isEncrypted && (
+                  <Shield className="h-6 w-6 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                )}
+              </div>
+              {decryptionStage && (
+                <div className="w-full max-w-md space-y-2">
+                  <p className="text-sm text-center text-muted-foreground">{decryptionStage}</p>
+                  {decryptionProgress > 0 && (
+                    <Progress value={decryptionProgress} className="h-2" />
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {error && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-destructive mb-4">{error}</p>
+              <div className="p-4 rounded-full bg-destructive/10 mb-4">
+                <X className="h-12 w-12 text-destructive" />
+              </div>
+              <p className="text-destructive mb-2 font-semibold">Preview Failed</p>
+              <p className="text-sm text-muted-foreground mb-4 max-w-md">{error}</p>
+              {isEncrypted && (
+                <p className="text-xs text-muted-foreground mb-4 max-w-md">
+                  This file is encrypted. Make sure you have the correct decryption key.
+                </p>
+              )}
               <Button onClick={onDownload} variant="outline">
                 <Download className="h-4 w-4 mr-2" />
                 Download Instead

@@ -3,57 +3,98 @@
 
 import { walrusService } from './walrus';
 import { blobTrackingService } from './blobTracking';
-import type { BlobMetadata } from '@/types/walrus';
+import { sealStorageService } from './seal/sealStorage';
+import type { BlobMetadata, SealFileMetadata } from '@/types/walrus';
 
 /**
  * Example: Upload a file to Walrus and track it
+ * Supports both encrypted (Seal) and unencrypted (standard Walrus) uploads
  */
 export async function uploadAndTrackFile(
   file: File,
-  userAddress?: string
-): Promise<{ blobId: string; walrusUrl: string; walrusScanUrl: string }> {
+  userAddress?: string,
+  options?: { useEncryption?: boolean; epochs?: number; onProgress?: (progress: any) => void }
+): Promise<{ blobId: string; walrusUrl: string; walrusScanUrl: string; encryptionKey?: string }> {
   try {
-    // 1. Upload to Walrus
-    const walrusBlob = await walrusService.uploadFile(file, userAddress);
-    
-    // 2. Create tracking metadata
-    const metadata: BlobMetadata = {
-      blobId: walrusBlob.blobId,
-      fileId: '', // Will be set after Sui FileObject creation
-      objectId: '', // Will be set after Sui FileObject creation
-      fileName: file.name,
-      originalSize: file.size,
-      encryptedSize: file.size, // If not encrypted, same as original
-      encodedSize: file.size, // Will be updated from Walrus response
-      mimeType: file.type,
-      contentType: categorizeContentType(file.type),
-      walrusResponse: walrusBlob.walrusResponse || {} as any,
-      storageCost: 0, // Will be extracted from response
-      storageEpochs: 5,
-      uploadEpoch: 0,
-      expirationEpoch: 5,
-      aggregatorUrl: walrusBlob.walrusUrl,
-      walrusScanUrl: walrusService.getWalrusScanUrl(walrusBlob.blobId),
-      uploadedAt: new Date(),
-      expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days
-      status: 'active',
-      downloadCount: 0,
-      reuseCount: 0
-    };
-    
-    // 3. Track the blob
-    await blobTrackingService.trackBlob(metadata);
-    
-    console.log('✅ File uploaded and tracked successfully!');
-    console.log(`📦 Blob ID: ${walrusBlob.blobId}`);
-    console.log(`🔗 Walrus URL: ${walrusBlob.walrusUrl}`);
-    console.log(`🔍 Walrus Scan: ${metadata.walrusScanUrl}`);
-    
-    return {
-      blobId: walrusBlob.blobId,
-      walrusUrl: walrusBlob.walrusUrl,
-      walrusScanUrl: metadata.walrusScanUrl
-    };
+    const useEncryption = options?.useEncryption ?? false;
+    const epochs = options?.epochs ?? 5;
+
+    if (useEncryption) {
+      // Route to Seal service for encrypted upload
+      console.log('🔐 Uploading with encryption enabled...');
+      
+      const sealResult = await sealStorageService.uploadFile(file, {
+        encrypt: true,
+        userAddress,
+        epochs,
+        onProgress: options?.onProgress,
+        encryptionOptions: {
+          algorithm: 'AES-GCM',
+          keySize: 256,
+          generateKey: true
+        }
+      });
+
+      // Track the encrypted blob with extended metadata
+      await blobTrackingService.trackBlob(sealResult.metadata);
+
+      console.log('✅ Encrypted file uploaded and tracked successfully!');
+      console.log(`📦 Primary Blob ID: ${sealResult.blobIds[0]}`);
+      console.log(`🔐 Encrypted with ${sealResult.metadata.chunkCount} chunk(s)`);
+      console.log(`🔗 Walrus URL: ${sealResult.metadata.aggregatorUrl}`);
+      console.log(`🔍 Walrus Scan: ${sealResult.metadata.walrusScanUrl}`);
+
+      return {
+        blobId: sealResult.blobIds[0],
+        walrusUrl: sealResult.metadata.aggregatorUrl,
+        walrusScanUrl: sealResult.metadata.walrusScanUrl,
+        encryptionKey: sealResult.encryptionKey
+      };
+    } else {
+      // Route to standard Walrus service for unencrypted upload
+      console.log('🐋 Uploading without encryption...');
+      
+      const walrusBlob = await walrusService.uploadFile(file, userAddress, epochs);
+      
+      // Create tracking metadata
+      const metadata: BlobMetadata = {
+        blobId: walrusBlob.blobId,
+        fileId: '', // Will be set after Sui FileObject creation
+        objectId: '', // Will be set after Sui FileObject creation
+        fileName: file.name,
+        originalSize: file.size,
+        encryptedSize: file.size, // If not encrypted, same as original
+        encodedSize: file.size, // Will be updated from Walrus response
+        mimeType: file.type,
+        contentType: categorizeContentType(file.type),
+        walrusResponse: walrusBlob.walrusResponse || {} as any,
+        storageCost: 0, // Will be extracted from response
+        storageEpochs: epochs,
+        uploadEpoch: 0,
+        expirationEpoch: epochs,
+        aggregatorUrl: walrusBlob.walrusUrl,
+        walrusScanUrl: walrusService.getWalrusScanUrl(walrusBlob.blobId),
+        uploadedAt: new Date(),
+        expiresAt: new Date(Date.now() + epochs * 24 * 60 * 60 * 1000),
+        status: 'active',
+        downloadCount: 0,
+        reuseCount: 0
+      };
+      
+      // Track the blob
+      await blobTrackingService.trackBlob(metadata);
+      
+      console.log('✅ File uploaded and tracked successfully!');
+      console.log(`📦 Blob ID: ${walrusBlob.blobId}`);
+      console.log(`🔗 Walrus URL: ${walrusBlob.walrusUrl}`);
+      console.log(`🔍 Walrus Scan: ${metadata.walrusScanUrl}`);
+      
+      return {
+        blobId: walrusBlob.blobId,
+        walrusUrl: walrusBlob.walrusUrl,
+        walrusScanUrl: metadata.walrusScanUrl
+      };
+    }
   } catch (error) {
     console.error('Failed to upload and track file:', error);
     throw error;
@@ -62,24 +103,61 @@ export async function uploadAndTrackFile(
 
 /**
  * Example: Download a blob by ID
+ * Automatically detects and handles encrypted files
  */
-export async function downloadBlobById(blobId: string): Promise<Blob> {
+export async function downloadBlobById(
+  blobId: string,
+  options?: { encryptionKey?: string; onProgress?: (progress: any) => void }
+): Promise<Blob> {
   try {
-    // 1. Download from Walrus
-    const blob = await walrusService.downloadBlob(blobId);
-    
-    // 2. Update download count in tracking
+    // 1. Get metadata to check if encrypted
     const metadata = await blobTrackingService.getBlobMetadata(blobId);
-    if (metadata) {
+    
+    if (metadata && isEncryptedMetadata(metadata)) {
+      // Download encrypted file using Seal
+      console.log('🔐 Downloading encrypted file...');
+      
+      if (!options?.encryptionKey) {
+        throw new Error('Encryption key required to download encrypted file');
+      }
+
+      const blob = await sealStorageService.downloadFile(
+        metadata as SealFileMetadata,
+        {
+          decrypt: true,
+          encryptionKey: options.encryptionKey,
+          onProgress: options?.onProgress,
+          verifyIntegrity: true
+        }
+      );
+
+      // Update download count
       await blobTrackingService.updateBlobMetadata(blobId, {
         downloadCount: metadata.downloadCount + 1,
         lastAccessed: new Date()
       });
+
+      console.log(`✅ Downloaded and decrypted blob ${blobId}`);
+      
+      return blob;
+    } else {
+      // Download unencrypted file using standard Walrus
+      console.log('🐋 Downloading unencrypted file...');
+      
+      const blob = await walrusService.downloadBlob(blobId);
+      
+      // Update download count in tracking
+      if (metadata) {
+        await blobTrackingService.updateBlobMetadata(blobId, {
+          downloadCount: metadata.downloadCount + 1,
+          lastAccessed: new Date()
+        });
+      }
+      
+      console.log(`✅ Downloaded blob ${blobId}`);
+      
+      return blob;
     }
-    
-    console.log(`✅ Downloaded blob ${blobId}`);
-    
-    return blob;
   } catch (error) {
     console.error('Failed to download blob:', error);
     throw error;
@@ -88,13 +166,25 @@ export async function downloadBlobById(blobId: string): Promise<Blob> {
 
 /**
  * Example: Verify a blob exists on Walrus
+ * Handles both encrypted and unencrypted files
  */
 export async function verifyBlobExists(blobId: string): Promise<boolean> {
   try {
-    const exists = await walrusService.verifyBlob(blobId);
+    // Get metadata to check if encrypted
+    const metadata = await blobTrackingService.getBlobMetadata(blobId);
+    
+    let exists = false;
+    
+    if (metadata && isEncryptedMetadata(metadata)) {
+      // Verify encrypted file using Seal
+      const verificationResult = await sealStorageService.verifyFile(metadata as SealFileMetadata);
+      exists = verificationResult.success;
+    } else {
+      // Verify unencrypted file using standard Walrus
+      exists = await walrusService.verifyBlob(blobId);
+    }
     
     // Update verification status in tracking
-    const metadata = await blobTrackingService.getBlobMetadata(blobId);
     if (metadata) {
       await blobTrackingService.updateBlobMetadata(blobId, {
         verificationStatus: exists ? 'verified' : 'failed',
@@ -138,6 +228,104 @@ export async function getAllTrackedBlobs(): Promise<Array<{
 }
 
 /**
+ * Migrate an unencrypted file to encrypted storage
+ * Downloads the original file, re-uploads with encryption, and updates metadata
+ */
+export async function migrateToEncrypted(
+  blobId: string,
+  userAddress?: string,
+  options?: { epochs?: number; onProgress?: (progress: any) => void }
+): Promise<{ 
+  newBlobId: string; 
+  encryptionKey: string; 
+  oldBlobId: string;
+  metadata: SealFileMetadata;
+}> {
+  try {
+    console.log(`🔄 Starting migration of blob ${blobId} to encrypted storage...`);
+
+    // 1. Get existing metadata
+    const existingMetadata = await blobTrackingService.getBlobMetadata(blobId);
+    if (!existingMetadata) {
+      throw new Error(`Blob ${blobId} not found in tracking database`);
+    }
+
+    // Check if already encrypted
+    if (isEncryptedMetadata(existingMetadata)) {
+      throw new Error(`Blob ${blobId} is already encrypted`);
+    }
+
+    // 2. Download the unencrypted file
+    console.log('📥 Downloading original unencrypted file...');
+    const originalBlob = await walrusService.downloadBlob(blobId);
+    
+    // Convert blob to File to preserve metadata
+    const file = new File([originalBlob], existingMetadata.fileName, {
+      type: existingMetadata.mimeType
+    });
+
+    // 3. Re-upload with encryption enabled
+    console.log('🔐 Re-uploading with encryption...');
+    const uploadResult = await sealStorageService.uploadFile(file, {
+      encrypt: true,
+      userAddress,
+      epochs: options?.epochs ?? existingMetadata.storageEpochs,
+      onProgress: options?.onProgress,
+      encryptionOptions: {
+        algorithm: 'AES-GCM',
+        keySize: 256,
+        generateKey: true
+      }
+    });
+
+    // 4. Preserve file history and update metadata
+    const migratedMetadata: SealFileMetadata = {
+      ...uploadResult.metadata,
+      // Preserve original metadata
+      fileId: existingMetadata.fileId,
+      downloadCount: existingMetadata.downloadCount,
+      lastAccessed: existingMetadata.lastAccessed,
+      reuseCount: existingMetadata.reuseCount,
+      imageMetadata: existingMetadata.imageMetadata,
+      videoMetadata: existingMetadata.videoMetadata,
+      audioMetadata: existingMetadata.audioMetadata,
+      // Add migration tracking
+      contentHash: uploadResult.metadata.contentHash
+    };
+
+    // 5. Update tracking database with new encrypted metadata
+    // Remove old unencrypted blob tracking
+    await blobTrackingService.deleteBlobMetadata(blobId);
+    
+    // Add new encrypted blob tracking
+    await blobTrackingService.trackBlob(migratedMetadata);
+
+    console.log('✅ Migration complete!');
+    console.log(`📦 Old Blob ID: ${blobId}`);
+    console.log(`📦 New Blob ID: ${uploadResult.blobIds[0]}`);
+    console.log(`🔐 Encrypted with ${uploadResult.metadata.chunkCount} chunk(s)`);
+    console.log(`🔑 Encryption key generated (store securely!)`);
+
+    return {
+      newBlobId: uploadResult.blobIds[0],
+      encryptionKey: uploadResult.encryptionKey!,
+      oldBlobId: blobId,
+      metadata: migratedMetadata
+    };
+  } catch (error) {
+    console.error('Failed to migrate blob to encrypted storage:', error);
+    throw error;
+  }
+}
+
+/**
+ * Helper: Check if metadata represents an encrypted file
+ */
+function isEncryptedMetadata(metadata: BlobMetadata): metadata is SealFileMetadata {
+  return 'isEncrypted' in metadata && (metadata as SealFileMetadata).isEncrypted === true;
+}
+
+/**
  * Helper: Categorize content type
  */
 function categorizeContentType(mimeType: string): 'image' | 'video' | 'audio' | 'document' | 'archive' | 'other' {
@@ -154,5 +342,7 @@ export const walrusIntegration = {
   uploadAndTrackFile,
   downloadBlobById,
   verifyBlobExists,
-  getAllTrackedBlobs
+  getAllTrackedBlobs,
+  migrateToEncrypted,
+  isEncryptedMetadata
 };

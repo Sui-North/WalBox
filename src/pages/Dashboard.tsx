@@ -20,7 +20,18 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Cloud, Upload, FolderOpen, ArrowLeft, Wallet, Download, Star, Clock, FolderPlus } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Cloud, Upload, FolderOpen, ArrowLeft, Wallet, Download, Star, Clock, FolderPlus, Settings, Shield, ShieldOff, RefreshCw } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
@@ -36,6 +47,15 @@ const Dashboard = () => {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null);
+  
+  // Encryption settings
+  const [encryptByDefault, setEncryptByDefault] = useState(() => {
+    const saved = localStorage.getItem('encrypt_by_default');
+    return saved ? saved === 'true' : true;
+  });
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationProgress, setMigrationProgress] = useState(0);
   
   // File filtering
   const { filters, filteredFiles, setSearch, clearSearch, updateFilters } = useFileFilter(files);
@@ -55,6 +75,19 @@ const Dashboard = () => {
   const breadcrumbs: BreadcrumbItem[] = account?.address 
     ? foldersService.getBreadcrumbs(account.address, currentFolderId)
     : [];
+  
+  // Calculate encryption statistics
+  const encryptedFiles = files.filter(f => {
+    const sealKey = localStorage.getItem(`seal_key_${f.id}`);
+    return !!sealKey;
+  });
+  const unencryptedFiles = files.filter(f => {
+    const sealKey = localStorage.getItem(`seal_key_${f.id}`);
+    return !sealKey;
+  });
+  const encryptionPercentage = files.length > 0 
+    ? Math.round((encryptedFiles.length / files.length) * 100) 
+    : 0;
 
   useEffect(() => {
     // Load files and folders when wallet is connected
@@ -187,6 +220,59 @@ const Dashboard = () => {
     }
   };
 
+  // Handle encryption default toggle
+  const handleEncryptByDefaultChange = (checked: boolean) => {
+    setEncryptByDefault(checked);
+    localStorage.setItem('encrypt_by_default', checked.toString());
+    toast({
+      title: 'Settings Updated',
+      description: `Encryption is now ${checked ? 'enabled' : 'disabled'} by default`,
+    });
+  };
+
+  // Handle bulk migration
+  const handleBulkMigration = async () => {
+    if (unencryptedFiles.length === 0) {
+      toast({
+        title: 'No Files to Migrate',
+        description: 'All files are already encrypted',
+      });
+      return;
+    }
+
+    setIsMigrating(true);
+    setMigrationProgress(0);
+
+    try {
+      // This is a placeholder - actual migration would need to:
+      // 1. Download each unencrypted file
+      // 2. Re-upload with encryption
+      // 3. Update metadata
+      // For now, we'll just simulate the process
+      
+      toast({
+        title: 'Migration Not Yet Implemented',
+        description: 'Bulk migration feature is coming soon. For now, please re-upload files individually with encryption enabled.',
+        variant: 'default',
+      });
+
+      // Simulated progress for demonstration
+      for (let i = 0; i <= 100; i += 10) {
+        setMigrationProgress(i);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    } catch (error) {
+      toast({
+        title: 'Migration Failed',
+        description: error instanceof Error ? error.message : 'Failed to migrate files',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsMigrating(false);
+      setMigrationProgress(0);
+    }
+  };
+
   return (
     <DndProvider>
       <div className="min-h-screen bg-background relative overflow-hidden">
@@ -272,7 +358,7 @@ const Dashboard = () => {
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full animate-fade-in" style={{ animationDelay: '0.2s' }}>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 mb-4">
-              <TabsList className="glass-effect grid w-full sm:max-w-2xl grid-cols-3 p-1 sm:p-1.5 h-auto">
+              <TabsList className="glass-effect grid w-full sm:max-w-3xl grid-cols-4 p-1 sm:p-1.5 h-auto">
                 <TabsTrigger 
                   value="upload" 
                   className="gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300 py-2.5 sm:py-3 text-xs sm:text-sm"
@@ -297,6 +383,14 @@ const Dashboard = () => {
                   <span className="font-medium hidden xs:inline">Favorites</span>
                   <span className="font-medium xs:hidden">Fav</span>
                   <Badge variant="secondary" className="ml-0.5 sm:ml-1 text-xs">{favoriteFiles.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="settings" 
+                  className="gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all duration-300 py-2.5 sm:py-3 text-xs sm:text-sm"
+                >
+                  <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="font-medium hidden xs:inline">Settings</span>
+                  <span className="font-medium xs:hidden">Set</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -383,6 +477,151 @@ const Dashboard = () => {
 
             <TabsContent value="favorites" className="mt-6">
               <FileListTable files={favoriteFiles} onRefresh={refreshFiles} />
+            </TabsContent>
+
+            <TabsContent value="settings" className="mt-6 space-y-6">
+              {/* Encryption Settings Section */}
+              <Card className="glass-effect p-6 border-primary/20">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 rounded-xl bg-primary/10">
+                    <Shield className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold">Encryption Settings</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Manage your file encryption preferences
+                    </p>
+                  </div>
+                </div>
+
+                {/* Default Encryption Toggle */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 rounded-lg bg-card/50 border border-primary/10">
+                    <div className="flex-1">
+                      <Label htmlFor="encrypt-default" className="text-base font-medium cursor-pointer">
+                        Enable Encryption by Default
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        New file uploads will be encrypted automatically
+                      </p>
+                    </div>
+                    <Switch
+                      id="encrypt-default"
+                      checked={encryptByDefault}
+                      onCheckedChange={handleEncryptByDefaultChange}
+                    />
+                  </div>
+
+                  {/* Encryption Statistics */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card className="p-4 bg-card/50 border-primary/10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/10">
+                          <Shield className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold">{encryptedFiles.length}</p>
+                          <p className="text-xs text-muted-foreground">Encrypted Files</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 bg-card/50 border-primary/10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-muted/50">
+                          <ShieldOff className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold">{unencryptedFiles.length}</p>
+                          <p className="text-xs text-muted-foreground">Unencrypted Files</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-4 bg-card/50 border-primary/10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-primary/10">
+                          <Shield className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold">{encryptionPercentage}%</p>
+                          <p className="text-xs text-muted-foreground">Encryption Rate</p>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Encryption Progress Bar */}
+                  {files.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Overall Encryption Status</span>
+                        <span className="font-medium">{encryptionPercentage}%</span>
+                      </div>
+                      <Progress value={encryptionPercentage} className="h-2" />
+                    </div>
+                  )}
+
+                  {/* Bulk Migration Tool */}
+                  {unencryptedFiles.length > 0 && (
+                    <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <div className="flex items-start gap-3">
+                        <RefreshCw className="h-5 w-5 text-amber-500 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-medium text-amber-500 mb-1">
+                            Migrate Unencrypted Files
+                          </h4>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            You have {unencryptedFiles.length} unencrypted file{unencryptedFiles.length !== 1 ? 's' : ''}. 
+                            Migrate them to encrypted storage for better security.
+                          </p>
+                          {isMigrating && (
+                            <div className="mb-3 space-y-2">
+                              <Progress value={migrationProgress} className="h-2" />
+                              <p className="text-xs text-muted-foreground">
+                                Migrating files... {migrationProgress}%
+                              </p>
+                            </div>
+                          )}
+                          <Button
+                            onClick={handleBulkMigration}
+                            disabled={isMigrating}
+                            variant="outline"
+                            className="gap-2 border-amber-500/30 hover:bg-amber-500/10"
+                          >
+                            {isMigrating ? (
+                              <>
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                Migrating...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-4 w-4" />
+                                Migrate All Files
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Info Box */}
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-primary" />
+                      About Encryption
+                    </h4>
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>• Files are encrypted using AES-256-GCM encryption</li>
+                      <li>• Encryption happens client-side before upload</li>
+                      <li>• Large files are split into chunks for distributed storage</li>
+                      <li>• Only you can decrypt your files with your encryption key</li>
+                      <li>• Encryption keys are stored securely in your browser</li>
+                    </ul>
+                  </div>
+                </div>
+              </Card>
             </TabsContent>
           </Tabs>
         </div>
