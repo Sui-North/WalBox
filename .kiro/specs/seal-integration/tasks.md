@@ -73,8 +73,8 @@
     - Test chunk hash generation
     - _Requirements: 10.1_
 
-- [ ] 5. Implement Seal storage service
-  - [ ] 5.1 Create sealStorage.ts with upload functionality
+- [x] 5. Implement Seal storage service
+  - [x] 5.1 Create sealStorage.ts with upload functionality
     - Implement uploadFile() that orchestrates encryption, chunking, and upload
     - Use Seal's publishChunk() for each chunk upload
     - Implement progress tracking with onProgress callbacks
@@ -82,7 +82,7 @@
     - Return SealUploadResult with all metadata
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.7_
 
-  - [ ] 5.2 Implement download and verification functionality
+  - [x] 5.2 Implement download and verification functionality
     - Implement downloadFile() that retrieves and decrypts chunks
     - Use Seal's retrieve() method for chunk downloads
     - Implement chunk reassembly and decryption
@@ -90,7 +90,7 @@
     - Implement error handling for failed chunk retrieval
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 7.1, 7.2, 7.3_
 
-  - [ ] 5.3 Add retry logic and error handling
+  - [x] 5.3 Add retry logic and error handling
     - Implement exponential backoff for failed chunk uploads
     - Add retry mechanism for network errors (up to 3 attempts)
     - Implement RPC endpoint fallback on connection failure
