@@ -52,15 +52,15 @@
     - Test IV uniqueness
     - _Requirements: 10.1, 10.4_
 
-- [ ] 4. Implement chunking service
-  - [ ] 4.1 Create sealChunking.ts with file chunking logic
+- [x] 4. Implement chunking service
+  - [x] 4.1 Create sealChunking.ts with file chunking logic
     - Implement chunkFile() to split files into chunks
     - Implement reassembleChunks() to reconstruct files
     - Implement calculateChunkCount() for size estimation
     - Add chunk hash generation for integrity
     - _Requirements: 2.3_
 
-  - [ ] 4.2 Add chunk metadata generation
+  - [x] 4.2 Add chunk metadata generation
     - Create ChunkMetadata objects for each chunk
     - Implement chunk ordering and indexing
     - Add chunk size optimization logic
