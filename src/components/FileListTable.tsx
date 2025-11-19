@@ -37,6 +37,7 @@ import {
   Loader2 
 } from 'lucide-react';
 import { ShareModal } from './ShareModal';
+import { FilePreviewModal } from './FilePreviewModal';
 import { VirtualFileList } from './VirtualFileList';
 import { toast } from '@/hooks/use-toast';
 
@@ -63,6 +64,9 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
   const [verificationResults, setVerificationResults] = useState<Map<string, FileVerificationResult>>(new Map());
   const [batchVerifying, setBatchVerifying] = useState(false);
 
+  const [previewFile, setPreviewFile] = useState<FileMetadata | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
   const handleDelete = async (file: FileMetadata) => {
     try {
       await storageService.deleteBlob(file.id);
@@ -76,6 +80,80 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
       toast({
         title: "Delete Failed",
         description: "Could not delete file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePreview = (file: FileMetadata) => {
+    console.log('Opening preview for file:', file.id);
+    setPreviewFile(file);
+    setIsPreviewOpen(true);
+  };
+
+  const handleDownload = async (file: FileMetadata) => {
+    try {
+      const localFile = localFilesService.getFile(file.id);
+      if (!localFile) {
+        toast({
+          title: "File Not Found",
+          description: "File metadata not found",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check if file is encrypted with Seal
+      const sealKey = localStorage.getItem(`seal_key_${file.id}`);
+      
+      let blob: Blob;
+      
+      if (sealKey) {
+        console.log('Downloading encrypted file:', file.id);
+        const sealMetadataStr = localStorage.getItem(`seal_metadata_${file.id}`);
+        
+        if (!sealMetadataStr) {
+          toast({
+            title: "Cannot Download",
+            description: "File metadata not found. Please re-upload the file.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const sealMetadata = JSON.parse(sealMetadataStr);
+        blob = await sealStorageService.downloadFile(sealMetadata, {
+          decrypt: true,
+          encryptionKey: sealKey,
+          verifyIntegrity: true,
+        });
+      } else {
+        console.log('Downloading unencrypted file:', file.id);
+        // Try IndexedDB first
+        blob = await storageService.getBlob(file.id) || await storageService.downloadFromWalrus(
+          new TextEncoder().encode(file.id)
+        );
+      }
+
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = localFile.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Download Started",
+        description: `Downloading ${localFile.name}`,
+      });
+    } catch (error) {
+      console.error('Download error:', error);
+      toast({
+        title: "Download Failed",
+        description: error instanceof Error ? error.message : "Could not download file",
         variant: "destructive",
       });
     }
@@ -469,9 +547,9 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
                           key={`view-${file.id}`}
                           variant="ghost"
                           size="icon"
-                          onClick={() => navigate(`/file/${file.id}`)}
+                          onClick={() => handlePreview(file)}
                           className="hover:bg-primary/10 hover:text-primary transition-all duration-200 hover:scale-110"
-                          title="View file"
+                          title="Preview file"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -512,6 +590,21 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
           file={shareModalFile}
           onClose={() => setShareModalFile(null)}
           onUpdate={onRefresh}
+        />
+      )}
+
+      {previewFile && (
+        <FilePreviewModal
+          isOpen={isPreviewOpen}
+          onClose={() => {
+            setIsPreviewOpen(false);
+            setPreviewFile(null);
+          }}
+          fileName={localFilesService.getFile(previewFile.id)?.name || previewFile.file_id || 'Unknown'}
+          fileType={localFilesService.getFile(previewFile.id)?.type}
+          walrusHash={new Uint8Array()} // Not used anymore
+          fileId={previewFile.id}
+          onDownload={() => handleDownload(previewFile)}
         />
       )}
     </>

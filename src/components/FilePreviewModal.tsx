@@ -45,7 +45,7 @@ export function FilePreviewModal({
   const previewType = previewService.getPreviewType(fileName, fileType);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || !fileId) {
       // Cleanup preview URL when modal closes
       if (previewUrl) {
         previewService.revokePreviewURL(previewUrl);
@@ -62,8 +62,15 @@ export function FilePreviewModal({
   }, [isOpen, fileName, fileId]);
 
   const loadPreview = async () => {
+    if (!fileId) {
+      setError('File ID is missing');
+      setIsLoading(false);
+      return;
+    }
+
     if (!previewService.canPreview(fileName, fileType)) {
       setError('Preview not available for this file type');
+      setIsLoading(false);
       return;
     }
 
@@ -73,36 +80,38 @@ export function FilePreviewModal({
     setDecryptionStage('');
 
     try {
+      console.log('Loading preview for file:', fileId);
+      
       // Check if file is encrypted with Seal
-      const sealKey = fileId ? localStorage.getItem(`seal_key_${fileId}`) : null;
+      const sealKey = localStorage.getItem(`seal_key_${fileId}`);
       setIsEncrypted(!!sealKey);
 
       let blob: Blob;
 
-      if (sealKey && fileId) {
+      if (sealKey) {
+        console.log('File is encrypted, loading with Seal');
         // File is encrypted with Seal - use Seal storage service
         setDecryptionStage('Downloading encrypted file...');
         
-        // We need to construct metadata for download
-        // In a real implementation, this should be stored and retrieved properly
-        const metadata: Partial<SealFileMetadata> = {
-          blobId: Array.from(walrusHash).map(b => b.toString(16).padStart(2, '0')).join(''),
-          fileId: fileId,
-          fileName: fileName,
-          encryptedSize: 0, // Unknown at this point
-          isEncrypted: true,
-          isChunked: false,
-          chunks: [],
-          initializationVector: '',
-          encryptionAlgorithm: 'AES-GCM',
-        };
+        const sealMetadataStr = localStorage.getItem(`seal_metadata_${fileId}`);
+        
+        if (!sealMetadataStr) {
+          console.error('Seal metadata not found');
+          setError('File metadata not found. Please re-upload the file.');
+          setIsLoading(false);
+          return;
+        }
+
+        const sealMetadata: SealFileMetadata = JSON.parse(sealMetadataStr);
+        console.log('Seal metadata loaded:', sealMetadata);
 
         try {
           blob = await sealStorageService.downloadFile(
-            metadata as SealFileMetadata,
+            sealMetadata,
             {
               decrypt: true,
               encryptionKey: sealKey,
+              verifyIntegrity: true,
               onProgress: (progress: DownloadProgress) => {
                 setDecryptionProgress(progress.percentage);
                 if (progress.stage === 'downloading') {
@@ -115,6 +124,7 @@ export function FilePreviewModal({
               }
             }
           );
+          console.log('File decrypted successfully, size:', blob.size);
         } catch (decryptError) {
           console.error('Seal decryption failed:', decryptError);
           setError('Failed to decrypt file. The encryption key may be invalid or the file may be corrupted.');
@@ -122,20 +132,31 @@ export function FilePreviewModal({
           return;
         }
       } else {
-        // Try legacy encryption or unencrypted
-        const encryptedBlob = await storageService.downloadFromWalrus(walrusHash);
+        console.log('File is unencrypted, loading from storage');
+        // Unencrypted file - try IndexedDB first, then Walrus
+        setDecryptionStage('Loading file...');
         
-        const keyId = localStorage.getItem(`key_${fileName}`);
-        blob = encryptedBlob;
+        blob = await storageService.getBlob(fileId);
         
-        if (keyId) {
-          try {
-            setDecryptionStage('Decrypting file...');
-            blob = await encryptionService.decrypt(encryptedBlob, keyId);
-          } catch (decryptError) {
-            console.warn('Legacy decryption failed, using encrypted blob:', decryptError);
+        if (!blob) {
+          console.log('Not in IndexedDB, trying Walrus');
+          // Try to get blob metadata and download from Walrus
+          const blobMetadata = storageService.getBlobMetadata(fileId);
+          if (blobMetadata && blobMetadata.blobId) {
+            console.log('Downloading from Walrus:', blobMetadata.blobId);
+            const walrusHash = new TextEncoder().encode(blobMetadata.blobId);
+            blob = await storageService.downloadFromWalrus(walrusHash);
           }
         }
+        
+        if (!blob) {
+          console.error('Blob not found in any storage');
+          setError('File not found. It may have been deleted or not uploaded properly.');
+          setIsLoading(false);
+          return;
+        }
+        
+        console.log('File loaded successfully, size:', blob.size);
       }
 
       setDecryptionStage('Generating preview...');
@@ -144,12 +165,15 @@ export function FilePreviewModal({
       if (previewType === 'image') {
         const url = previewService.generateImagePreview(blob);
         setPreviewUrl(url);
+        console.log('Image preview generated');
       } else if (previewType === 'pdf') {
         const url = previewService.generatePDFPreview(blob);
         setPreviewUrl(url);
+        console.log('PDF preview generated');
       } else if (previewType === 'text' || previewType === 'code') {
         const text = await previewService.readTextContent(blob);
         setTextContent(text);
+        console.log('Text preview generated');
       }
     } catch (err) {
       console.error('Preview error:', err);
