@@ -494,10 +494,24 @@ export class StorageService {
    * @returns Hash string
    */
   private bytesToHash(bytes: Uint8Array): string {
-    // Convert bytes to hex string
-    return Array.from(bytes)
+    // Try to decode as UTF-8 string first (for blob IDs stored as text)
+    try {
+      const decoded = new TextDecoder().decode(bytes);
+      // Check if it looks like a valid blob ID (contains alphanumeric and special chars)
+      if (decoded && /^[A-Za-z0-9_\-]+$/.test(decoded)) {
+        console.log('📝 Decoded blob ID as UTF-8:', decoded);
+        return decoded;
+      }
+    } catch (e) {
+      // If UTF-8 decoding fails, fall through to hex
+    }
+    
+    // Fall back to hex string for binary data
+    const hexString = Array.from(bytes)
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
+    console.log('📝 Converted bytes to hex:', hexString);
+    return hexString;
   }
 
   /**

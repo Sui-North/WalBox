@@ -127,6 +127,10 @@ const Dashboard = () => {
       const localFiles = localFilesService.getAllFiles();
       console.log('💾 Loaded local files:', localFiles.length, localFiles);
       
+      // Get list of deleted files (files that were explicitly deleted by user)
+      const deletedFiles = JSON.parse(localStorage.getItem('deleted_files') || '[]');
+      console.log('🗑️ Deleted files:', deletedFiles);
+      
       // Convert local files to FileMetadata format
       const localFilesAsMetadata = localFiles.map(lf => ({
         id: lf.id,
@@ -145,11 +149,18 @@ const Dashboard = () => {
         console.log('📋 Loaded blockchain files:', blockchainFiles.length, blockchainFiles);
         
         // Merge: prefer local metadata for display, but include blockchain-only files
-        const blockchainOnlyFiles = blockchainFiles.filter(
-          bf => bf.id && !localFiles.find(lf => lf.id === bf.id)
-        );
+        // Filter out deleted files
+        const blockchainOnlyFiles = blockchainFiles
+          .filter(bf => bf.id && !localFiles.find(lf => lf.id === bf.id) && !deletedFiles.includes(bf.id))
+          .map(bf => {
+            // If uploadedAt is invalid (epoch 0), use current time as fallback
+            const uploadedAt = bf.uploadedAt.getTime() === 0 ? new Date() : bf.uploadedAt;
+            return { ...bf, uploadedAt };
+          });
         
-        const allFiles = [...localFilesAsMetadata, ...blockchainOnlyFiles];
+        const allFiles = [...localFilesAsMetadata, ...blockchainOnlyFiles].filter(
+          f => !deletedFiles.includes(f.id)
+        );
         console.log('✅ Total files:', allFiles.length, allFiles);
         setFiles(allFiles);
       } catch (blockchainError) {

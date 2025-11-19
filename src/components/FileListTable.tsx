@@ -69,14 +69,39 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
 
   const handleDelete = async (file: FileMetadata) => {
     try {
+      console.log('🗑️ Deleting file:', file.id);
+      
+      // Delete from storage (IndexedDB/Walrus)
       await storageService.deleteBlob(file.id);
+      
+      // Delete local file metadata
       localFilesService.deleteFile(file.id);
+      
+      // Clean up all related data
+      localStorage.removeItem(`seal_key_${file.id}`);
+      localStorage.removeItem(`seal_metadata_${file.id}`);
+      localStorage.removeItem(`key_${file.id}`);
+      localStorage.removeItem(`walrus_blob_${file.id}`);
+      localStorage.removeItem(`file_corrupted_${file.id}`);
+      
+      // Mark file as deleted (so it doesn't come back from blockchain)
+      const deletedFiles = JSON.parse(localStorage.getItem('deleted_files') || '[]');
+      if (!deletedFiles.includes(file.id)) {
+        deletedFiles.push(file.id);
+        localStorage.setItem('deleted_files', JSON.stringify(deletedFiles));
+      }
+      
+      console.log('✅ File deleted, refreshing list...');
+      
+      // Refresh the file list
       onRefresh();
+      
       toast({
         title: "File Deleted",
-        description: "File has been removed.",
+        description: "File has been removed from your dashboard.",
       });
     } catch (error) {
+      console.error('❌ Delete error:', error);
       toast({
         title: "Delete Failed",
         description: "Could not delete file",
@@ -93,7 +118,10 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
 
   const handleDownload = async (file: FileMetadata) => {
     try {
+      console.log('🔽 handleDownload called with file:', file);
+      
       if (!file.id) {
+        console.error('❌ File ID is missing');
         toast({
           title: "Cannot Download",
           description: "File ID is missing. Please refresh and try again.",
@@ -102,17 +130,19 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
         return;
       }
 
+      console.log('📂 Looking for local file with ID:', file.id);
       const localFile = localFilesService.getFile(file.id);
+      console.log('📂 Local file found:', localFile);
+      
       if (!localFile) {
-        toast({
-          title: "File Not Found",
-          description: "File metadata not found. The file may not have been uploaded properly.",
-          variant: "destructive",
-        });
-        return;
+        console.warn('⚠️ Local file metadata not found, using file_id as name');
+        // Use file_id as fallback name
+        const fileName = file.file_id || 'download';
+        console.log('📝 Using fallback name:', fileName);
       }
 
-      console.log('Downloading file:', file.id, 'Name:', localFile.name);
+      const fileName = localFile?.name || file.file_id || 'download';
+      console.log('📝 Downloading file:', file.id, 'Name:', fileName);
 
       // Check if file is encrypted with Seal
       const sealKey = localStorage.getItem(`seal_key_${file.id}`);
@@ -149,13 +179,22 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
         
         if (!blobFromStorage) {
           console.log('Not in IndexedDB, trying Walrus');
-          // Try to download from Walrus using the walrus hash
+          
+          // The walrus_object_hash from blockchain is the actual blob ID (as bytes)
+          // We need to convert it to a string
           if (file.walrus_object_hash && file.walrus_object_hash.length > 0) {
-            blobFromStorage = await storageService.downloadFromWalrus(file.walrus_object_hash);
+            // Convert Uint8Array to string (it's stored as UTF-8 encoded blob ID)
+            const blobId = new TextDecoder().decode(file.walrus_object_hash);
+            console.log('Decoded blob ID from blockchain:', blobId);
+            
+            // Now encode it back to bytes for the download function
+            const blobIdBytes = new TextEncoder().encode(blobId);
+            blobFromStorage = await storageService.downloadFromWalrus(blobIdBytes);
           } else {
-            // Try using blob metadata
+            // Try using blob metadata as fallback
             const blobMetadata = storageService.getBlobMetadata(file.id);
             if (blobMetadata && blobMetadata.blobId) {
+              console.log('Using blob metadata, blob ID:', blobMetadata.blobId);
               const walrusHash = new TextEncoder().encode(blobMetadata.blobId);
               blobFromStorage = await storageService.downloadFromWalrus(walrusHash);
             }
@@ -165,7 +204,7 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
         if (!blobFromStorage) {
           toast({
             title: "File Not Found",
-            description: "Could not find file data. It may have been deleted or expired.",
+            description: "Could not find file data. It may have been deleted or expired from Walrus.",
             variant: "destructive",
           });
           return;
@@ -179,15 +218,17 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = localFile.name;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      console.log('✅ Download initiated successfully');
+
       toast({
         title: "Download Started",
-        description: `Downloading ${localFile.name}`,
+        description: `Downloading ${fileName}`,
       });
     } catch (error) {
       console.error('Download error:', error);
@@ -263,10 +304,6 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
           title: "❌ Verification Failed",
           description: `${failedChunks.length} chunk(s) failed verification. File may be corrupted.`,
           variant: "destructive",
-          action: {
-            label: "Re-upload",
-            onClick: () => handleReuploadCorrupted(file)
-          }
         });
       }
     } catch (error) {
@@ -497,7 +534,10 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
                       : 'Unknown'}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {file.uploadedAt.toLocaleDateString()}
+                    <div className="flex flex-col">
+                      <span className="text-sm">{file.uploadedAt.toLocaleDateString()}</span>
+                      <span className="text-xs text-muted-foreground/70">{file.uploadedAt.toLocaleTimeString()}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -641,10 +681,13 @@ export const FileListTable = ({ files, onRefresh }: FileListTableProps) => {
             setPreviewFile(null);
           }}
           fileName={localFilesService.getFile(previewFile.id)?.name || previewFile.file_id || 'Unknown'}
-          fileType={localFilesService.getFile(previewFile.id)?.type}
+          fileType={localFilesService.getFile(previewFile.id)?.type || 'application/octet-stream'}
           walrusHash={new Uint8Array()} // Not used anymore
           fileId={previewFile.id}
-          onDownload={() => handleDownload(previewFile)}
+          onDownload={() => {
+            console.log('Download button clicked for file:', previewFile.id);
+            handleDownload(previewFile);
+          }}
         />
       )}
     </>

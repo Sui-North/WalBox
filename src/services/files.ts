@@ -45,6 +45,20 @@ function parseFileObject(objectData: any): FileMetadata {
     console.error('❌ No ID found in object data:', objectData);
   }
   
+  // Try to get timestamp from various sources
+  let uploadedAt: Date;
+  if (fields.created_at && Number(fields.created_at) > 0) {
+    // Use on-chain timestamp if available
+    uploadedAt = new Date(Number(fields.created_at));
+  } else if (data.digest) {
+    // Try to use object creation time from digest metadata
+    // This is a fallback - the actual timestamp would need to be queried separately
+    uploadedAt = new Date();
+  } else {
+    // Last resort: use current time
+    uploadedAt = new Date();
+  }
+  
   const parsed = {
     id: id || '',
     file_id: fields.file_id || '',
@@ -58,7 +72,7 @@ function parseFileObject(objectData: any): FileMetadata {
           ? fields.allowed_addresses 
           : Object.values(fields.allowed_addresses))
       : [],
-    uploadedAt: new Date(Number(fields.created_at || 0)),
+    uploadedAt,
     encryptionStatus: 'encrypted' as const, // Assumed encrypted if stored on-chain
   };
   
