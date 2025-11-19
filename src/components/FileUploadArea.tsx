@@ -149,9 +149,15 @@ export const FileUploadArea = () => {
           description: `${selectedFile.name} has been encrypted and stored securely.`,
         });
 
-        // Navigate to dashboard with state to trigger refresh
+        // Clear selected file and reset state
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+
+        // Navigate to files tab and trigger refresh
         setTimeout(() => {
-          navigate('/dashboard', { state: { refresh: true } });
+          navigate('/dashboard', { state: { refresh: true, tab: 'files' } });
         }, 500);
       } else {
         // Use legacy unencrypted upload
@@ -218,8 +224,15 @@ export const FileUploadArea = () => {
         });
       }
 
+      // Clear selected file and reset state
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      // Navigate to files tab and trigger refresh
       setTimeout(() => {
-        navigate('/dashboard');
+        navigate('/dashboard', { state: { refresh: true, tab: 'files' } });
       }, 500);
 
     } catch (error) {

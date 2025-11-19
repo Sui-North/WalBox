@@ -44,8 +44,10 @@ const FileView = () => {
 
       const metadata = localFilesService.getFile(id);
       if (!metadata) {
+        console.error('File metadata not found for ID:', id);
         toast({
           title: "File Not Found",
+          description: "File metadata not found in local storage",
           variant: "destructive",
         });
         navigate('/dashboard');
@@ -59,13 +61,15 @@ const FileView = () => {
         const sealKey = localStorage.getItem(`seal_key_${id}`);
         
         if (sealKey) {
+          console.log('Loading encrypted file with Seal:', id);
           // File is encrypted - use Seal storage service
           const sealMetadataStr = localStorage.getItem(`seal_metadata_${id}`);
           
           if (!sealMetadataStr) {
             // Metadata missing - file was uploaded before metadata saving was implemented
+            console.error('Seal metadata not found for encrypted file:', id);
             toast({
-              title: "Cannot Download File",
+              title: "Cannot Load File",
               description: "This file was uploaded without metadata. Please re-upload the file.",
               variant: "destructive",
             });
@@ -73,6 +77,7 @@ const FileView = () => {
           }
 
           const sealMetadata: SealFileMetadata = JSON.parse(sealMetadataStr);
+          console.log('Seal metadata loaded:', sealMetadata);
           
           // Download and decrypt
           const blob = await sealStorageService.downloadFile(
@@ -86,19 +91,50 @@ const FileView = () => {
           
           const url = URL.createObjectURL(blob);
           setFileUrl(url);
+          console.log('Encrypted file loaded successfully');
         } else {
-          // Unencrypted file - use legacy storage
-          const blob = await storageService.getBlob(id);
+          console.log('Loading unencrypted file:', id);
+          // Unencrypted file - need to get the walrus hash from files service
+          // First, try to get from IndexedDB (for mock storage)
+          let blob = await storageService.getBlob(id);
+          
+          if (!blob) {
+            // Not in IndexedDB, try to download from Walrus using the file's walrus hash
+            // We need to reconstruct the walrus hash from the file metadata
+            console.log('File not in IndexedDB, attempting Walrus download');
+            
+            // Get the encryption key ID to find the walrus hash
+            const keyId = localStorage.getItem(`key_${id}`);
+            if (keyId) {
+              // Try to get the blob from Walrus using the stored blob ID
+              const blobMetadata = storageService.getBlobMetadata(id);
+              if (blobMetadata && blobMetadata.blobId) {
+                console.log('Found blob metadata, downloading from Walrus:', blobMetadata.blobId);
+                const walrusHash = new TextEncoder().encode(blobMetadata.blobId);
+                blob = await storageService.downloadFromWalrus(walrusHash);
+              }
+            }
+          }
+          
           if (blob) {
+            console.log('Blob retrieved, size:', blob.size);
             const url = URL.createObjectURL(blob);
             setFileUrl(url);
+            console.log('Unencrypted file loaded successfully');
+          } else {
+            console.error('Blob not found in storage for ID:', id);
+            toast({
+              title: "File Not Found",
+              description: "The file data could not be found. It may have been deleted or not uploaded properly.",
+              variant: "destructive",
+            });
           }
         }
       } catch (error) {
         console.error('Error loading file:', error);
         toast({
           title: "Could not load file",
-          description: error instanceof Error ? error.message : "Unknown error",
+          description: error instanceof Error ? error.message : "Unknown error occurred while loading file",
           variant: "destructive",
         });
       } finally {

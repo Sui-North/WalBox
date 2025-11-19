@@ -105,6 +105,13 @@ const Dashboard = () => {
   useEffect(() => {
     if (location.state?.refresh && account?.address) {
       loadFiles(account.address);
+      loadFolders(account.address);
+      
+      // Switch to files tab if specified
+      if (location.state?.tab) {
+        setActiveTab(location.state.tab);
+      }
+      
       // Clear the state to prevent repeated refreshes
       navigate(location.pathname, { replace: true, state: {} });
     }
