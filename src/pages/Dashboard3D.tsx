@@ -8,6 +8,7 @@ import { SearchBar } from '@/components/SearchBar';
 import { FileUploadArea3D } from '@/components/FileUploadArea3D';
 import { FileListTable } from '@/components/FileListTable';
 import { filesService, FileMetadata } from '@/services/files';
+import { localFilesService } from '@/services/localFiles';
 import { favoritesService } from '@/services/favorites';
 import { exportService } from '@/services/export';
 import { useFileFilter } from '@/hooks/useFileFilter';
@@ -65,11 +66,50 @@ const Dashboard3D = () => {
   const loadFiles = async (address: string) => {
     setIsLoadingFiles(true);
     try {
-      const fileList = await filesService.getAllFiles(address);
-      setFiles(fileList);
+      // Try to get files from blockchain
+      const blockchainFiles = await filesService.getAllFiles(address);
+      
+      // Get files from local storage
+      const localFiles = localFilesService.getAllFiles();
+      
+      // Convert local files to FileMetadata format
+      const localFilesAsMetadata: FileMetadata[] = localFiles.map(local => ({
+        id: local.id,
+        file_id: local.id,
+        walrus_object_hash: new Uint8Array(),
+        owner: address,
+        visibility: local.visibility,
+        allowedWallets: local.allowedWallets,
+        uploadedAt: local.uploadedAt,
+        encryptionStatus: 'encrypted' as const,
+        fileName: local.name,
+        fileSize: local.size,
+        mimeType: local.type,
+      }));
+      
+      // Merge both sources, preferring blockchain data if file exists in both
+      const blockchainIds = new Set(blockchainFiles.map(f => f.file_id));
+      const uniqueLocalFiles = localFilesAsMetadata.filter(f => !blockchainIds.has(f.file_id));
+      
+      setFiles([...blockchainFiles, ...uniqueLocalFiles]);
     } catch (error) {
       console.error('Error loading files:', error);
-      setFiles([]);
+      // Fallback to local files only
+      const localFiles = localFilesService.getAllFiles();
+      const localFilesAsMetadata: FileMetadata[] = localFiles.map(local => ({
+        id: local.id,
+        file_id: local.id,
+        walrus_object_hash: new Uint8Array(),
+        owner: address,
+        visibility: local.visibility,
+        allowedWallets: local.allowedWallets,
+        uploadedAt: local.uploadedAt,
+        encryptionStatus: 'encrypted' as const,
+        fileName: local.name,
+        fileSize: local.size,
+        mimeType: local.type,
+      }));
+      setFiles(localFilesAsMetadata);
     } finally {
       setIsLoadingFiles(false);
     }
