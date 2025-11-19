@@ -121,55 +121,14 @@ const Dashboard = () => {
   const loadFiles = async (address: string) => {
     setIsLoadingFiles(true);
     try {
-      // Get files from blockchain
-      const blockchainFiles = await filesService.getAllFiles(address);
-      console.log('📋 Loaded blockchain files:', blockchainFiles.length, blockchainFiles);
+      console.log('🔄 Loading files for address:', address);
       
-      // Get local files metadata
+      // Get local files metadata first (these always have correct IDs)
       const localFiles = localFilesService.getAllFiles();
       console.log('💾 Loaded local files:', localFiles.length, localFiles);
       
-      // Debug: Check if any blockchain files have undefined IDs
-      const filesWithoutIds = blockchainFiles.filter(f => !f.id);
-      if (filesWithoutIds.length > 0) {
-        console.warn('⚠️ Found blockchain files without IDs:', filesWithoutIds);
-      }
-      
-      // Merge blockchain files with local metadata
-      const mergedFiles = blockchainFiles.map(blockchainFile => {
-        const localFile = localFiles.find(lf => lf.id === blockchainFile.id);
-        if (localFile) {
-          // Merge with local metadata for better display
-          return {
-            ...blockchainFile,
-            file_id: localFile.name, // Use actual filename instead of file_id
-          };
-        }
-        return blockchainFile;
-      });
-      
-      // Also include local-only files (not yet on blockchain or failed to sync)
-      const localOnlyFiles = localFiles
-        .filter(lf => !blockchainFiles.find(bf => bf.id === lf.id))
-        .map(lf => ({
-          id: lf.id,
-          file_id: lf.name,
-          walrus_object_hash: new Uint8Array(),
-          owner: address,
-          visibility: lf.visibility,
-          allowedWallets: lf.allowedWallets,
-          uploadedAt: lf.uploadedAt,
-          encryptionStatus: 'pending' as const,
-        }));
-      
-      const allFiles = [...mergedFiles, ...localOnlyFiles];
-      console.log('Merged files:', allFiles);
-      setFiles(allFiles);
-    } catch (error) {
-      console.error('Error loading files:', error);
-      // Fallback to local files if blockchain query fails
-      const localFiles = localFilesService.getAllFiles();
-      const fallbackFiles = localFiles.map(lf => ({
+      // Convert local files to FileMetadata format
+      const localFilesAsMetadata = localFiles.map(lf => ({
         id: lf.id,
         file_id: lf.name,
         walrus_object_hash: new Uint8Array(),
@@ -177,9 +136,30 @@ const Dashboard = () => {
         visibility: lf.visibility,
         allowedWallets: lf.allowedWallets,
         uploadedAt: lf.uploadedAt,
-        encryptionStatus: 'pending' as const,
+        encryptionStatus: 'encrypted' as const,
       }));
-      setFiles(fallbackFiles);
+      
+      // Try to get files from blockchain (but don't fail if it doesn't work)
+      try {
+        const blockchainFiles = await filesService.getAllFiles(address);
+        console.log('📋 Loaded blockchain files:', blockchainFiles.length, blockchainFiles);
+        
+        // Merge: prefer local metadata for display, but include blockchain-only files
+        const blockchainOnlyFiles = blockchainFiles.filter(
+          bf => bf.id && !localFiles.find(lf => lf.id === bf.id)
+        );
+        
+        const allFiles = [...localFilesAsMetadata, ...blockchainOnlyFiles];
+        console.log('✅ Total files:', allFiles.length, allFiles);
+        setFiles(allFiles);
+      } catch (blockchainError) {
+        console.warn('⚠️ Blockchain query failed, using local files only:', blockchainError);
+        // Just use local files if blockchain fails
+        setFiles(localFilesAsMetadata);
+      }
+    } catch (error) {
+      console.error('❌ Error loading files:', error);
+      setFiles([]);
     } finally {
       setIsLoadingFiles(false);
     }
