@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { localFilesService, LocalFileMetadata } from '@/services/localFiles';
 import { storageService } from '@/services/storage';
+import { sealStorageService } from '@/services/seal/sealStorage';
+import type { SealFileMetadata } from '@/services/seal/sealTypes';
 import { WalletConnectButton } from '@/components/WalletConnectButton';
 import { ShareModal } from '@/components/ShareModal';
 import { LazyImage } from '@/components/LazyImage';
@@ -53,14 +55,44 @@ const FileView = () => {
       setFile(metadata);
 
       try {
-        const blob = await storageService.getBlob(id);
-        if (blob) {
+        // Check if file is encrypted with Seal
+        const sealKey = localStorage.getItem(`seal_key_${id}`);
+        
+        if (sealKey) {
+          // File is encrypted - use Seal storage service
+          const sealMetadataStr = localStorage.getItem(`seal_metadata_${id}`);
+          
+          if (!sealMetadataStr) {
+            throw new Error('Seal metadata not found');
+          }
+
+          const sealMetadata: SealFileMetadata = JSON.parse(sealMetadataStr);
+          
+          // Download and decrypt
+          const blob = await sealStorageService.downloadFile(
+            sealMetadata,
+            {
+              decrypt: true,
+              encryptionKey: sealKey,
+              verifyIntegrity: true,
+            }
+          );
+          
           const url = URL.createObjectURL(blob);
           setFileUrl(url);
+        } else {
+          // Unencrypted file - use legacy storage
+          const blob = await storageService.getBlob(id);
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            setFileUrl(url);
+          }
         }
       } catch (error) {
+        console.error('Error loading file:', error);
         toast({
           title: "Could not load file",
+          description: error instanceof Error ? error.message : "Unknown error",
           variant: "destructive",
         });
       } finally {
