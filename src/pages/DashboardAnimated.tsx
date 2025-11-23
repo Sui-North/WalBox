@@ -125,7 +125,7 @@ const Dashboard = () => {
         className="relative z-50"
       >
         <div className="glass-effect border-b border-primary/10 backdrop-blur-2xl">
-          <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="container mx-auto px-4 py-2 flex justify-between items-center">
             <motion.div
               className="flex items-center gap-3 group cursor-pointer"
               whileHover={{ scale: 1.05 }}
@@ -135,7 +135,11 @@ const Dashboard = () => {
                 animate={{ rotate: [0, 360] }}
                 transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
               >
-                <Cloud className="h-10 w-10 text-primary drop-shadow-[0_0_10px_rgba(14,165,233,0.5)]" />
+                <img 
+                  src="/logo.png" 
+                  alt="WalBox Logo" 
+                  className="h-16 w-16 drop-shadow-[0_0_10px_rgba(14,165,233,0.5)]"
+                />
               </motion.div>
               <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 WalBox

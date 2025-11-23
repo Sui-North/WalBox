@@ -33,7 +33,7 @@ const Home = () => {
         className="sticky top-0 z-50"
       >
         <div className="glass-effect border-b border-primary/10 backdrop-blur-2xl">
-          <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center gap-2">
+          <div className="container mx-auto px-4 sm:px-6 py-2 flex justify-between items-center gap-2">
             <motion.div
               className="flex items-center gap-2 sm:gap-3 group cursor-pointer"
               whileHover={{ scale: 1.05 }}
@@ -49,7 +49,11 @@ const Home = () => {
                   ease: 'linear',
                 }}
               >
-                <Cloud className="h-7 w-7 sm:h-10 sm:w-10 text-primary drop-shadow-[0_0_10px_rgba(14,165,233,0.5)]" />
+                <img 
+                  src="/logo.png" 
+                  alt="WalBox Logo" 
+                  className="h-12 w-12 sm:h-16 sm:w-16 drop-shadow-[0_0_10px_rgba(14,165,233,0.5)]"
+                />
               </motion.div>
               <span className="text-lg sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
                 WalBox
